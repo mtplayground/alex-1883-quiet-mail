@@ -1,0 +1,22 @@
+{
+  "name": "application-scaffold",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": [
+    "frontend"
+  ],
+  "scripts": {
+    "build": "npm --workspace frontend run build",
+    "dev": "npm --workspace frontend run dev",
+    "lint": "npm --workspace frontend run lint",
+    "format": "prettier --check .",
+    "format:write": "prettier --write .",
+    "rust:build": "cargo build --workspace",
+    "rust:lint": "cargo clippy --workspace --all-targets -- -D warnings",
+    "rust:fmt": "cargo fmt --all -- --check",
+    "check": "npm run lint && npm run build && npm run rust:fmt && npm run rust:lint"
+  },
+  "devDependencies": {
+    "prettier": "3.3.3"
+  }
+}
