@@ -1,36 +1,36 @@
-Architecture plan for Issue #49: Apply colorful gradient background to the built frontend
+Architecture plan for Issue #51: Add a colorful app background to the design system
 
 Current project shape
-- Backend: Rust Axum API in `backend/` with workspace configuration in root `Cargo.toml`.
+- Backend: Rust Axum API in `backend/`, with the root Cargo workspace managing backend crates.
 - Frontend: React + Vite + TypeScript SPA in `frontend/`.
-- Styling: Tailwind-backed global CSS in `frontend/src/styles.css`, with app composition in `frontend/src/App.tsx` and bootstrapping in `frontend/src/main.tsx`.
-- Tests: Playwright E2E specs in `e2e/`; root npm scripts drive frontend build/lint and Rust checks.
+- Styling: Tailwind theme extension in `frontend/tailwind.config.js` and global CSS variables/base styles in `frontend/src/styles.css`.
+- Layout surfaces: app shell in `frontend/src/components/layout/AppFrame.tsx`, shared UI components in `frontend/src/components/ui/`, mailbox views in `frontend/src/mail/`, and auth/login views in `frontend/src/auth/`.
+- Tests: Playwright E2E coverage in `e2e/`, with npm scripts at the repo root and frontend package level.
 
 Module structure and file organization
-- Keep the gradient implementation in the frontend only.
-- Define shared background/theme tokens at the global stylesheet level (`frontend/src/styles.css`) rather than duplicating gradients in individual components.
-- Use CSS custom properties for:
-  - global colorful app gradient
-  - dark-mode muted colorful app gradient
-  - neutral elevated surfaces used over the gradient
-  - borders/shadows needed for legibility
-- Apply the global gradient to `html`, `body`, and the React root/full-page wrapper so every route inherits the same background.
-- Update full-page containers in `frontend/src/App.tsx` so app frame, auth gate/loading wrapper, and login page do not use opaque neutral canvas backgrounds that hide the global gradient.
-- Preserve near-neutral panels/cards for mailbox sidebar, message list, reading pane, compose panel, and login card so text remains readable.
+- Keep the background implementation in the frontend design system layer, not in individual feature views.
+- Define shared app background tokens in `frontend/src/styles.css` using CSS custom properties for:
+  - the light-mode colorful app gradient
+  - the dark-mode muted colorful app gradient
+  - near-neutral surfaces layered over the gradient
+  - border and subtle shadow colors used by surfaces
+- Expose existing CSS variables through Tailwind in `frontend/tailwind.config.js` where utility classes need semantic colors.
+- Apply the global background at the root document/app level so login, auth loading, mailbox, compose, and reading states inherit it consistently.
+- Keep folder sidebar, message list, reading pane, compose panel, login card, and repeated UI cards on soft neutral or translucent surfaces to preserve text contrast.
 
 Shared types and contracts
-- No backend API or shared DTO changes are needed.
-- No database, auth, mail, or routing contract changes are needed.
-- Styling tokens are the only new shared contract: frontend components should reference the global CSS variables/Tailwind-compatible utility classes rather than hard-coded page backgrounds.
+- No backend API, database schema, auth flow, mail DTO, or server routing changes are needed.
+- The shared contract for this issue is visual: frontend components should consume semantic theme tokens rather than hard-coded page backgrounds.
+- Theme switching should continue to rely on the existing `data-theme` flow from `frontend/src/theme/`.
 
 Dependencies between issues
-- Issue #49 depends on the existing frontend design system and app shell.
-- There are no other open implementation issues in this session, so it can be completed independently.
-- Because the gradient is global, changes should be verified across authenticated shell, login/auth gate states, and dark mode.
+- Issue #51 builds on the existing minimal/airy design system described in the issue scope.
+- It is inherited by all frontend views because the background belongs to the app base and layout shell.
+- There are no other implementation issues in this setup batch, so future work can treat this as a design-system foundation.
 
 Key design decisions
-- Implement the colorful background as a restrained multi-stop gradient to satisfy the request without making the quiet-mail UI visually noisy.
-- Use a softer/muted gradient for dark mode to avoid high-contrast color bloom behind dark surfaces.
-- Keep content surfaces translucent or near-neutral with sufficient contrast; do not make message/card surfaces fully transparent.
-- Prefer global tokens and minimal component edits over broad markup rewrites, reducing regression risk.
-- Verification should include `npm --workspace frontend run build` and, if practical, frontend lint/check scripts.
+- Use a restrained multi-stop colorful gradient so the app base is more expressive without competing with mail content.
+- Use a darker, muted gradient variant for dark mode to avoid bright color bloom behind dark surfaces.
+- Preserve the quiet sans-serif typography, generous whitespace, subtle dividers, and single accent color from the existing design.
+- Prefer global tokens and small layout-surface adjustments over broad component rewrites.
+- Verify with frontend build/lint and visual checks of login, mailbox, reading pane, compose panel, and dark mode.
