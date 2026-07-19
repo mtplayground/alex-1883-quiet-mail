@@ -24,6 +24,10 @@ pub enum AppError {
     },
     #[error("password hashing failed")]
     PasswordHash { detail: String },
+    #[error("authentication failed")]
+    Auth { detail: String },
+    #[error("request is not authenticated")]
+    Unauthorized,
 }
 
 #[derive(Debug, Serialize)]
@@ -39,6 +43,7 @@ impl IntoResponse for AppError {
             AppError::Database { .. }
             | AppError::Migration { .. }
             | AppError::PasswordHash { .. } => StatusCode::SERVICE_UNAVAILABLE,
+            AppError::Auth { .. } | AppError::Unauthorized => StatusCode::UNAUTHORIZED,
         };
         let message = match &self {
             AppError::Config { message, detail } => detail
@@ -49,6 +54,11 @@ impl IntoResponse for AppError {
             AppError::PasswordHash { detail } => {
                 format!("account bootstrap did not complete: {detail}")
             }
+            AppError::Auth { detail } => {
+                tracing::warn!(%detail, "authentication failed");
+                "authentication required".to_owned()
+            }
+            AppError::Unauthorized => "authentication required".to_owned(),
         };
 
         (
