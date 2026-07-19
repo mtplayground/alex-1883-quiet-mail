@@ -2,17 +2,25 @@ import type { ReactNode } from 'react';
 
 type AppFrameProps = {
   sidebar: ReactNode;
+  sidebarTitle?: string;
   eyebrow: string;
   title: string;
   headerAside?: ReactNode;
   children: ReactNode;
 };
 
-export function AppFrame({ sidebar, eyebrow, title, headerAside, children }: AppFrameProps) {
+export function AppFrame({
+  sidebar,
+  sidebarTitle = 'Folders',
+  eyebrow,
+  title,
+  headerAside,
+  children,
+}: AppFrameProps) {
   return (
     <main className="grid min-h-screen bg-canvas text-ink lg:grid-cols-[minmax(13rem,15rem)_minmax(0,1fr)]">
       <aside className="border-b border-line bg-surface px-5 py-6 lg:border-b-0 lg:border-r lg:px-6 lg:py-7">
-        <div className="mb-8 text-sm font-semibold text-ink">Workspace</div>
+        <div className="mb-8 text-sm font-semibold text-ink">{sidebarTitle}</div>
         {sidebar}
       </aside>
 

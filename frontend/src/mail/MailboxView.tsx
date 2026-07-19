@@ -1,0 +1,252 @@
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from 'react';
+
+import type { AuthUser } from '../auth/types';
+import { AppFrame } from '../components/layout/AppFrame';
+import { UserBadge } from '../components/ui/UserBadge';
+
+import { FolderSidebar } from './FolderSidebar';
+import { MessageList, MessagePreview } from './MessageList';
+import { fetchFolders, fetchMessage, fetchMessages } from './api';
+import type { Folder, Message, MessageListItem } from './types';
+
+type MailboxContextValue = {
+  folders: Folder[];
+  foldersLoading: boolean;
+  selectedFolder: string;
+  selectedFolderName: string;
+  selectFolder: (folderKey: string) => void;
+  messages: MessageListItem[];
+  messagesLoading: boolean;
+  messagesError: string | null;
+  selectedMessageId: number | null;
+  selectedMessage: Message | null;
+  detailLoading: boolean;
+  detailError: string | null;
+  selectMessage: (messageId: number) => void;
+};
+
+const MailboxContext = createContext<MailboxContextValue | undefined>(undefined);
+
+export function MailboxProvider({ children }: { children: ReactNode }) {
+  const [folders, setFolders] = useState<Folder[]>([]);
+  const [foldersLoading, setFoldersLoading] = useState(true);
+  const [selectedFolder, setSelectedFolder] = useState('inbox');
+  const [messages, setMessages] = useState<MessageListItem[]>([]);
+  const [messagesLoading, setMessagesLoading] = useState(true);
+  const [messagesError, setMessagesError] = useState<string | null>(null);
+  const [selectedMessageId, setSelectedMessageId] = useState<number | null>(null);
+  const [selectedMessage, setSelectedMessage] = useState<Message | null>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [detailError, setDetailError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let active = true;
+
+    fetchFolders()
+      .then((response) => {
+        if (!active) {
+          return;
+        }
+
+        setFolders(response.folders);
+      })
+      .catch(() => {
+        if (!active) {
+          return;
+        }
+
+        setFolders([]);
+      })
+      .finally(() => {
+        if (active) {
+          setFoldersLoading(false);
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+
+    fetchMessages(selectedFolder)
+      .then((response) => {
+        if (!active) {
+          return;
+        }
+
+        setMessages(response.messages);
+      })
+      .catch(() => {
+        if (!active) {
+          return;
+        }
+
+        setMessages([]);
+        setMessagesError('Messages could not be loaded.');
+      })
+      .finally(() => {
+        if (active) {
+          setMessagesLoading(false);
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [selectedFolder]);
+
+  const selectFolder = useCallback((folderKey: string) => {
+    setMessagesLoading(true);
+    setMessagesError(null);
+    setSelectedMessageId(null);
+    setSelectedMessage(null);
+    setDetailError(null);
+    setSelectedFolder(folderKey);
+  }, []);
+
+  const selectMessage = useCallback((messageId: number) => {
+    setSelectedMessageId(messageId);
+    setDetailLoading(true);
+    setDetailError(null);
+
+    fetchMessage(messageId)
+      .then((response) => {
+        setSelectedMessage(response.message);
+        setMessages((current) =>
+          current.map((message) =>
+            message.id === messageId ? { ...message, is_read: true } : message,
+          ),
+        );
+      })
+      .catch(() => {
+        setSelectedMessage(null);
+        setDetailError('Message could not be opened.');
+      })
+      .finally(() => {
+        setDetailLoading(false);
+      });
+  }, []);
+
+  const selectedFolderName = useMemo(
+    () => folders.find((folder) => folder.key === selectedFolder)?.display_name ?? 'Inbox',
+    [folders, selectedFolder],
+  );
+
+  const value = useMemo<MailboxContextValue>(
+    () => ({
+      folders,
+      foldersLoading,
+      selectedFolder,
+      selectedFolderName,
+      selectFolder,
+      messages,
+      messagesLoading,
+      messagesError,
+      selectedMessageId,
+      selectedMessage,
+      detailLoading,
+      detailError,
+      selectMessage,
+    }),
+    [
+      detailError,
+      detailLoading,
+      folders,
+      foldersLoading,
+      messages,
+      messagesError,
+      messagesLoading,
+      selectFolder,
+      selectMessage,
+      selectedFolder,
+      selectedFolderName,
+      selectedMessage,
+      selectedMessageId,
+    ],
+  );
+
+  return <MailboxContext.Provider value={value}>{children}</MailboxContext.Provider>;
+}
+
+export function MailboxFrame({ user }: { user: AuthUser }) {
+  const { selectedFolderName } = useMailboxContext();
+
+  return (
+    <AppFrame
+      eyebrow={user.registered ? 'Registration complete' : 'Welcome back'}
+      headerAside={<UserBadge user={user} />}
+      sidebar={<MailboxSidebar />}
+      title={selectedFolderName}
+    >
+      <MailboxContent />
+    </AppFrame>
+  );
+}
+
+export function MailboxSidebar() {
+  const { folders, foldersLoading, selectedFolder, selectFolder } = useMailboxContext();
+
+  return (
+    <FolderSidebar
+      folders={folders}
+      loading={foldersLoading}
+      onSelectFolder={selectFolder}
+      selectedFolder={selectedFolder}
+    />
+  );
+}
+
+export function MailboxContent() {
+  const {
+    detailError,
+    detailLoading,
+    messages,
+    messagesError,
+    messagesLoading,
+    selectedFolderName,
+    selectedMessage,
+    selectedMessageId,
+    selectMessage,
+  } = useMailboxContext();
+
+  return (
+    <section className="grid min-h-[calc(100vh-8.5rem)] min-w-0 lg:grid-cols-[minmax(20rem,28rem)_minmax(0,1fr)]">
+      <div className="border-b border-line bg-panel lg:border-b-0 lg:border-r">
+        <div className="border-b border-line px-5 py-4 lg:px-6">
+          <p className="text-sm font-semibold text-ink">{selectedFolderName}</p>
+        </div>
+        <MessageList
+          error={messagesError}
+          loading={messagesLoading}
+          messages={messages}
+          onSelectMessage={selectMessage}
+          selectedMessageId={selectedMessageId}
+        />
+      </div>
+      <div className="min-w-0 bg-surface">
+        <MessagePreview error={detailError} loading={detailLoading} message={selectedMessage} />
+      </div>
+    </section>
+  );
+}
+
+function useMailboxContext() {
+  const context = useContext(MailboxContext);
+
+  if (!context) {
+    throw new Error('Mailbox context is missing.');
+  }
+
+  return context;
+}
