@@ -12,7 +12,7 @@ export function AuthGate({ children }: AuthGateProps) {
 
   if (status === 'loading') {
     return (
-      <main className="grid min-h-screen place-items-center bg-canvas px-6 text-sm text-ink-muted">
+      <main className="grid min-h-screen place-items-center px-6 text-sm text-ink-muted">
         Checking session
       </main>
     );

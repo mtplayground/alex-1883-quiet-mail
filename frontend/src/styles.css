@@ -15,8 +15,13 @@
     --color-accent-soft: 238 243 234;
     --color-accent-strong: 54 81 65;
     --shadow-subtle: 31 41 51;
+    --gradient-app:
+      radial-gradient(circle at 12% 18%, rgb(255 214 165 / 0.68) 0, transparent 28rem),
+      radial-gradient(circle at 84% 12%, rgb(186 230 253 / 0.72) 0, transparent 30rem),
+      radial-gradient(circle at 82% 78%, rgb(196 181 253 / 0.62) 0, transparent 32rem),
+      linear-gradient(135deg, rgb(255 247 237) 0%, rgb(238 242 255) 48%, rgb(236 253 245) 100%);
     color: rgb(var(--color-ink));
-    background: rgb(var(--color-canvas));
+    background: var(--gradient-app);
     color-scheme: light;
     font-family: theme('fontFamily.sans');
     font-synthesis: none;
@@ -35,6 +40,11 @@
     --color-accent-soft: 34 49 40;
     --color-accent-strong: 190 219 198;
     --shadow-subtle: 0 0 0;
+    --gradient-app:
+      radial-gradient(circle at 14% 12%, rgb(92 73 46 / 0.48) 0, transparent 28rem),
+      radial-gradient(circle at 84% 16%, rgb(36 73 87 / 0.5) 0, transparent 30rem),
+      radial-gradient(circle at 78% 82%, rgb(66 54 102 / 0.48) 0, transparent 32rem),
+      linear-gradient(135deg, rgb(17 24 39) 0%, rgb(25 34 44) 48%, rgb(20 39 33) 100%);
     color-scheme: dark;
   }
 
@@ -45,14 +55,21 @@
   html {
     min-width: 320px;
     min-height: 100%;
-    background: rgb(var(--color-canvas));
+    background: var(--gradient-app);
+    background-attachment: fixed;
   }
 
   body {
     min-width: 320px;
     min-height: 100vh;
     margin: 0;
-    background: rgb(var(--color-canvas));
+    background: var(--gradient-app);
+    background-attachment: fixed;
+  }
+
+  #root {
+    min-height: 100vh;
+    background: transparent;
   }
 
   button {
