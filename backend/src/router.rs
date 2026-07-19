@@ -2,7 +2,7 @@ use axum::{extract::State, routing::get, Json, Router};
 use serde::Serialize;
 use tower_http::{services::ServeDir, trace::TraceLayer};
 
-use crate::{app_state::AppState, auth, config::Config, db::Database, error::AppError};
+use crate::{app_state::AppState, auth, config::Config, db::Database, error::AppError, mail};
 
 #[derive(Debug, Serialize)]
 struct HealthResponse {
@@ -17,7 +17,7 @@ struct DbReadyResponse {
 
 pub fn build_router(config: Config, database: Database) -> Router {
     let app_state = AppState::new(&config, database);
-    let mailbox = auth::protect_mailbox_routes(Router::new(), app_state.clone());
+    let mailbox = auth::protect_mailbox_routes(mail::routes(), app_state.clone());
     let api = Router::new()
         .route("/health", get(health))
         .route("/health/db", get(db_ready))

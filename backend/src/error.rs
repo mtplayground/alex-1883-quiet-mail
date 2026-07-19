@@ -28,6 +28,8 @@ pub enum AppError {
     Auth { detail: String },
     #[error("request is not authenticated")]
     Unauthorized,
+    #[error("{message}")]
+    NotFound { message: String },
 }
 
 #[derive(Debug, Serialize)]
@@ -44,6 +46,7 @@ impl IntoResponse for AppError {
             | AppError::Migration { .. }
             | AppError::PasswordHash { .. } => StatusCode::SERVICE_UNAVAILABLE,
             AppError::Auth { .. } | AppError::Unauthorized => StatusCode::UNAUTHORIZED,
+            AppError::NotFound { .. } => StatusCode::NOT_FOUND,
         };
         let message = match &self {
             AppError::Config { message, detail } => detail
@@ -59,6 +62,7 @@ impl IntoResponse for AppError {
                 "authentication required".to_owned()
             }
             AppError::Unauthorized => "authentication required".to_owned(),
+            AppError::NotFound { message } => message.clone(),
         };
 
         (
