@@ -4,11 +4,38 @@
 
 @layer base {
   :root {
-    color: theme('colors.ink.DEFAULT');
-    background: theme('colors.canvas');
+    --color-canvas: 247 248 246;
+    --color-surface: 251 252 250;
+    --color-panel: 255 255 255;
+    --color-line: 223 228 220;
+    --color-ink: 31 41 51;
+    --color-ink-muted: 102 115 107;
+    --color-ink-soft: 135 144 136;
+    --color-accent: 95 127 107;
+    --color-accent-soft: 238 243 234;
+    --color-accent-strong: 54 81 65;
+    --shadow-subtle: 31 41 51;
+    color: rgb(var(--color-ink));
+    background: rgb(var(--color-canvas));
+    color-scheme: light;
     font-family: theme('fontFamily.sans');
     font-synthesis: none;
     text-rendering: optimizeLegibility;
+  }
+
+  :root[data-theme='dark'] {
+    --color-canvas: 16 19 23;
+    --color-surface: 21 25 30;
+    --color-panel: 28 33 39;
+    --color-line: 49 58 68;
+    --color-ink: 236 241 238;
+    --color-ink-muted: 165 177 169;
+    --color-ink-soft: 120 132 124;
+    --color-accent: 142 178 154;
+    --color-accent-soft: 34 49 40;
+    --color-accent-strong: 190 219 198;
+    --shadow-subtle: 0 0 0;
+    color-scheme: dark;
   }
 
   * {
@@ -18,14 +45,14 @@
   html {
     min-width: 320px;
     min-height: 100%;
-    background: theme('colors.canvas');
+    background: rgb(var(--color-canvas));
   }
 
   body {
     min-width: 320px;
     min-height: 100vh;
     margin: 0;
-    background: theme('colors.canvas');
+    background: rgb(var(--color-canvas));
   }
 
   button {

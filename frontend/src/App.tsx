@@ -2,14 +2,17 @@ import { AuthGate } from './auth/AuthGate';
 import { AuthProvider } from './auth/AuthContext';
 import { useAuth } from './auth/useAuth';
 import { MailboxFrame, MailboxProvider } from './mail/MailboxView';
+import { ThemeProvider } from './theme/ThemeContext';
 
 export function App() {
   return (
-    <AuthProvider>
-      <AuthGate>
-        <AuthenticatedApp />
-      </AuthGate>
-    </AuthProvider>
+    <ThemeProvider>
+      <AuthProvider>
+        <AuthGate>
+          <AuthenticatedApp />
+        </AuthGate>
+      </AuthProvider>
+    </ThemeProvider>
   );
 }
 

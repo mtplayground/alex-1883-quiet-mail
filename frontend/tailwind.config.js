@@ -4,19 +4,19 @@ export default {
   theme: {
     extend: {
       colors: {
-        canvas: '#f7f8f6',
-        surface: '#fbfcfa',
-        panel: '#ffffff',
-        line: '#dfe4dc',
+        canvas: 'rgb(var(--color-canvas) / <alpha-value>)',
+        surface: 'rgb(var(--color-surface) / <alpha-value>)',
+        panel: 'rgb(var(--color-panel) / <alpha-value>)',
+        line: 'rgb(var(--color-line) / <alpha-value>)',
         ink: {
-          DEFAULT: '#1f2933',
-          muted: '#66736b',
-          soft: '#879088',
+          DEFAULT: 'rgb(var(--color-ink) / <alpha-value>)',
+          muted: 'rgb(var(--color-ink-muted) / <alpha-value>)',
+          soft: 'rgb(var(--color-ink-soft) / <alpha-value>)',
         },
         accent: {
-          DEFAULT: '#5f7f6b',
-          soft: '#eef3ea',
-          strong: '#365141',
+          DEFAULT: 'rgb(var(--color-accent) / <alpha-value>)',
+          soft: 'rgb(var(--color-accent-soft) / <alpha-value>)',
+          strong: 'rgb(var(--color-accent-strong) / <alpha-value>)',
         },
       },
       fontFamily: {
@@ -31,7 +31,7 @@ export default {
         ],
       },
       boxShadow: {
-        subtle: '0 1px 2px rgb(31 41 51 / 0.06)',
+        subtle: '0 1px 2px rgb(var(--shadow-subtle) / 0.12)',
       },
       borderRadius: {
         ui: '0.5rem',
