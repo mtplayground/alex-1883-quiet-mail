@@ -2,7 +2,7 @@
 
 use axum::{
     extract::{Path, State},
-    routing::get,
+    routing::{get, post},
     Json, Router,
 };
 use chrono::{DateTime, Utc};
@@ -57,6 +57,24 @@ impl SystemFolder {
             "archive" => Some(Self::Archive),
             "trash" => Some(Self::Trash),
             _ => None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum MoveAction {
+    Archive,
+    Trash,
+    Restore,
+}
+
+impl MoveAction {
+    pub const fn target_folder(self) -> SystemFolder {
+        match self {
+            Self::Archive => SystemFolder::Archive,
+            Self::Trash => SystemFolder::Trash,
+            Self::Restore => SystemFolder::Inbox,
         }
     }
 }
@@ -123,11 +141,17 @@ pub struct MessageResponse {
     pub message: Message,
 }
 
+#[derive(Debug, Deserialize)]
+pub struct MoveMessageRequest {
+    pub action: MoveAction,
+}
+
 pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/folders", get(list_folders))
         .route("/folders/:folder_key/messages", get(list_messages))
         .route("/messages/:message_id", get(message_detail))
+        .route("/messages/:message_id/move", post(move_message))
 }
 
 async fn list_folders(State(state): State<AppState>) -> Result<Json<FoldersResponse>, AppError> {
@@ -156,6 +180,17 @@ async fn message_detail(
     Path(message_id): Path<i64>,
 ) -> Result<Json<MessageResponse>, AppError> {
     let message = fetch_message_detail_and_mark_read(&state.database, message_id).await?;
+
+    Ok(Json(MessageResponse { message }))
+}
+
+async fn move_message(
+    State(state): State<AppState>,
+    Path(message_id): Path<i64>,
+    Json(request): Json<MoveMessageRequest>,
+) -> Result<Json<MessageResponse>, AppError> {
+    let message =
+        move_message_to_folder(&state.database, message_id, request.action.target_folder()).await?;
 
     Ok(Json(MessageResponse { message }))
 }
@@ -232,6 +267,45 @@ pub async fn fetch_message_detail_and_mark_read(
         .map_err(|source| AppError::Database { source })?;
 
     Ok(message)
+}
+
+pub async fn move_message_to_folder(
+    database: &Database,
+    message_id: i64,
+    folder: SystemFolder,
+) -> Result<Message, AppError> {
+    sqlx::query_as::<_, Message>(
+        r#"
+        UPDATE messages
+        SET folder_key = $2
+        WHERE id = $1
+        RETURNING
+            id,
+            folder_key,
+            sender,
+            to_recipients,
+            cc_recipients,
+            bcc_recipients,
+            subject,
+            body,
+            snippet,
+            sent_at,
+            is_read,
+            thread_root_id,
+            reply_to_message_id,
+            forwarded_from_message_id,
+            created_at,
+            updated_at
+        "#,
+    )
+    .bind(message_id)
+    .bind(folder.key())
+    .fetch_optional(database.pool())
+    .await
+    .map_err(|source| AppError::Database { source })?
+    .ok_or_else(|| AppError::NotFound {
+        message: "message not found".to_owned(),
+    })
 }
 
 pub async fn fetch_messages_for_folder(
