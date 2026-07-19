@@ -523,7 +523,7 @@ export function MailboxContent() {
   return (
     <>
       <section className="grid min-h-[calc(100vh-8.5rem)] min-w-0 lg:grid-cols-[minmax(20rem,28rem)_minmax(0,1fr)]">
-        <div className="border-b border-line bg-panel lg:border-b-0 lg:border-r">
+        <div className="border-b border-line bg-panel/90 shadow-subtle backdrop-blur-sm lg:border-b-0 lg:border-r">
           <MessageListHeader />
           {showingSearchResults ? (
             <SearchResultsView
@@ -544,7 +544,7 @@ export function MailboxContent() {
             />
           )}
         </div>
-        <div className="min-w-0 bg-surface">
+        <div className="min-w-0 bg-surface/90 backdrop-blur-sm">
           <ReadingPane
             error={detailError}
             loading={detailLoading}
