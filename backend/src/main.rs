@@ -20,6 +20,7 @@ async fn run() -> Result<(), AppError> {
     init_tracing();
 
     let config = Config::from_env()?;
+    config.log_startup_summary();
     let database = Database::connect(&config).await?;
     database.run_migrations().await?;
 
