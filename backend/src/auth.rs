@@ -1,17 +1,26 @@
 use axum::{
     extract::State,
-    http::{header::COOKIE, HeaderMap},
+    http::{
+        header::{COOKIE, SET_COOKIE},
+        HeaderMap,
+    },
     middleware::{self, Next},
-    response::{Redirect, Response},
+    response::{IntoResponse, Redirect, Response},
     Json, Router,
 };
 use jsonwebtoken::{decode, decode_header, jwk::JwkSet, Algorithm, DecodingKey, Validation};
 use serde::{Deserialize, Serialize};
 use url::Url;
 
-use crate::{app_state::AppState, config::Config, db::Database, error::AppError};
+use crate::{
+    app_state::AppState,
+    config::{Config, E2eTestAuthConfig},
+    db::Database,
+    error::AppError,
+};
 
 const SESSION_COOKIE_NAME: &str = "mctai_session";
+const E2E_SESSION_COOKIE_NAME: &str = "quiet_mail_e2e_session";
 
 #[derive(Clone)]
 pub struct AuthService {
@@ -20,6 +29,7 @@ pub struct AuthService {
     app_token: String,
     jwks_url: String,
     return_to: String,
+    e2e_test_auth: Option<E2eTestAuthConfig>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -70,6 +80,7 @@ impl AuthService {
                 .as_deref()
                 .map(frontend_root)
                 .unwrap_or_else(|| "http://localhost:5173/".to_owned()),
+            e2e_test_auth: config.e2e_test_auth.clone(),
         }
     }
 
@@ -129,10 +140,35 @@ impl AuthService {
                 detail: source.to_string(),
             })
     }
+
+    fn e2e_login_cookie(&self) -> Option<String> {
+        self.e2e_test_auth
+            .as_ref()
+            .map(|_| format!("{E2E_SESSION_COOKIE_NAME}=1; Path=/; SameSite=Lax; HttpOnly"))
+    }
+
+    fn e2e_claims(&self) -> Option<SessionClaims> {
+        let test_auth = self.e2e_test_auth.as_ref()?;
+
+        Some(SessionClaims {
+            sub: format!("e2e:{}", test_auth.email),
+            email: test_auth.email.clone(),
+            email_verified: Some(true),
+            name: Some(test_auth.name.clone()),
+            picture: None,
+            aud: serde_json::Value::String(self.app_token.clone()),
+            iss: "e2e-test".to_owned(),
+            exp: 4_102_444_800,
+        })
+    }
 }
 
-pub async fn login(State(state): State<AppState>) -> Result<Redirect, AppError> {
-    Ok(Redirect::temporary(&state.auth.login_url()?))
+pub async fn login(State(state): State<AppState>) -> Result<Response, AppError> {
+    if let Some(cookie) = state.auth.e2e_login_cookie() {
+        return Ok(([(SET_COOKIE, cookie)], Redirect::temporary("/")).into_response());
+    }
+
+    Ok(Redirect::temporary(&state.auth.login_url()?).into_response())
 }
 
 pub async fn session(
@@ -176,6 +212,13 @@ async fn authenticate(
     state: &AppState,
     headers: &HeaderMap,
 ) -> Result<(SessionClaims, PersistedUser), AppError> {
+    if e2e_session_cookie(headers).is_some() {
+        if let Some(claims) = state.auth.e2e_claims() {
+            let user = upsert_user(&state.database, &claims).await?;
+            return Ok((claims, user));
+        }
+    }
+
     let token = session_cookie(headers).ok_or(AppError::Unauthorized)?;
     let claims = state.auth.verify_session(&token).await?;
     tracing::debug!(
@@ -215,14 +258,22 @@ async fn upsert_user(
     .map_err(|source| AppError::Database { source })
 }
 
+fn e2e_session_cookie(headers: &HeaderMap) -> Option<String> {
+    cookie_value(headers, E2E_SESSION_COOKIE_NAME)
+}
+
 fn session_cookie(headers: &HeaderMap) -> Option<String> {
+    cookie_value(headers, SESSION_COOKIE_NAME)
+}
+
+fn cookie_value(headers: &HeaderMap, cookie_name: &str) -> Option<String> {
     headers
         .get_all(COOKIE)
         .iter()
         .filter_map(|value| value.to_str().ok())
         .flat_map(|value| value.split(';'))
         .filter_map(|cookie| cookie.trim().split_once('='))
-        .find_map(|(name, value)| (name == SESSION_COOKIE_NAME).then(|| value.to_owned()))
+        .find_map(|(name, value)| (name == cookie_name).then(|| value.to_owned()))
 }
 
 fn frontend_root(self_url: &str) -> String {
