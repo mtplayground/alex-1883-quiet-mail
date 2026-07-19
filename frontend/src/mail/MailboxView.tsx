@@ -4,6 +4,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from 'react';
@@ -17,6 +18,8 @@ import { ComposePanel } from './ComposePanel';
 import { FolderSidebar } from './FolderSidebar';
 import { MessageList } from './MessageList';
 import { ReadingPane } from './ReadingPane';
+import { SearchBar } from './SearchBar';
+import { SearchResultsView } from './SearchResultsView';
 import {
   createForwardDraft,
   createReplyDraft,
@@ -24,6 +27,7 @@ import {
   fetchMessage,
   fetchMessages,
   moveMessage,
+  searchMessages,
 } from './api';
 import type { Folder, Message, MessageListItem, MoveAction } from './types';
 
@@ -36,6 +40,10 @@ type MailboxContextValue = {
   messages: MessageListItem[];
   messagesLoading: boolean;
   messagesError: string | null;
+  searchQuery: string | null;
+  searchResults: MessageListItem[];
+  searchLoading: boolean;
+  searchError: string | null;
   selectedMessageId: number | null;
   selectedMessage: Message | null;
   detailLoading: boolean;
@@ -46,6 +54,8 @@ type MailboxContextValue = {
   replyForwardError: string | null;
   selectMessage: (messageId: number) => void;
   moveSelectedMessage: (action: MoveAction) => void;
+  runSearch: (query: string) => void;
+  clearSearch: () => void;
   composeOpen: boolean;
   composeDraft: Message | null;
   composeSession: number;
@@ -65,6 +75,10 @@ export function MailboxProvider({ children }: { children: ReactNode }) {
   const [messages, setMessages] = useState<MessageListItem[]>([]);
   const [messagesLoading, setMessagesLoading] = useState(true);
   const [messagesError, setMessagesError] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState<string | null>(null);
+  const [searchResults, setSearchResults] = useState<MessageListItem[]>([]);
+  const [searchLoading, setSearchLoading] = useState(false);
+  const [searchError, setSearchError] = useState<string | null>(null);
   const [selectedMessageId, setSelectedMessageId] = useState<number | null>(null);
   const [selectedMessage, setSelectedMessage] = useState<Message | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
@@ -76,6 +90,7 @@ export function MailboxProvider({ children }: { children: ReactNode }) {
   const [composeOpen, setComposeOpen] = useState(false);
   const [composeDraft, setComposeDraft] = useState<Message | null>(null);
   const [composeSession, setComposeSession] = useState(0);
+  const searchRequestRef = useRef(0);
 
   useEffect(() => {
     let active = true;
@@ -137,6 +152,11 @@ export function MailboxProvider({ children }: { children: ReactNode }) {
   }, [selectedFolder]);
 
   const selectFolder = useCallback((folderKey: string) => {
+    searchRequestRef.current += 1;
+    setSearchQuery(null);
+    setSearchResults([]);
+    setSearchLoading(false);
+    setSearchError(null);
     setMessagesLoading(true);
     setMessagesError(null);
     setSelectedMessageId(null);
@@ -160,6 +180,11 @@ export function MailboxProvider({ children }: { children: ReactNode }) {
       .then((response) => {
         setSelectedMessage(response.message);
         setMessages((current) =>
+          current.map((message) =>
+            message.id === messageId ? { ...message, is_read: true } : message,
+          ),
+        );
+        setSearchResults((current) =>
           current.map((message) =>
             message.id === messageId ? { ...message, is_read: true } : message,
           ),
@@ -197,6 +222,11 @@ export function MailboxProvider({ children }: { children: ReactNode }) {
               message.id === movedMessage.id ? toListItem(movedMessage) : message,
             );
           });
+          setSearchResults((current) =>
+            current.map((message) =>
+              message.id === movedMessage.id ? toListItem(movedMessage) : message,
+            ),
+          );
         })
         .catch(() => {
           setMoveError('Message could not be moved.');
@@ -206,6 +236,60 @@ export function MailboxProvider({ children }: { children: ReactNode }) {
         });
     },
     [selectedFolder, selectedMessage],
+  );
+
+  const clearSearch = useCallback(() => {
+    searchRequestRef.current += 1;
+    setSearchQuery(null);
+    setSearchResults([]);
+    setSearchLoading(false);
+    setSearchError(null);
+  }, []);
+
+  const runSearch = useCallback(
+    (rawQuery: string) => {
+      const query = rawQuery.trim();
+
+      if (!query) {
+        clearSearch();
+        return;
+      }
+
+      const requestId = searchRequestRef.current + 1;
+      searchRequestRef.current = requestId;
+      setSearchQuery(query);
+      setSearchResults([]);
+      setSearchLoading(true);
+      setSearchError(null);
+      setSelectedMessageId(null);
+      setSelectedMessage(null);
+      setDetailError(null);
+      setMoveError(null);
+      setReplyForwardError(null);
+
+      searchMessages(query)
+        .then((response) => {
+          if (searchRequestRef.current !== requestId) {
+            return;
+          }
+
+          setSearchResults(response.messages);
+        })
+        .catch(() => {
+          if (searchRequestRef.current !== requestId) {
+            return;
+          }
+
+          setSearchResults([]);
+          setSearchError('Search results could not be loaded.');
+        })
+        .finally(() => {
+          if (searchRequestRef.current === requestId) {
+            setSearchLoading(false);
+          }
+        });
+    },
+    [clearSearch],
   );
 
   const openCompose = useCallback(() => {
@@ -295,6 +379,10 @@ export function MailboxProvider({ children }: { children: ReactNode }) {
       messages,
       messagesLoading,
       messagesError,
+      searchQuery,
+      searchResults,
+      searchLoading,
+      searchError,
       selectedMessageId,
       selectedMessage,
       detailLoading,
@@ -305,6 +393,8 @@ export function MailboxProvider({ children }: { children: ReactNode }) {
       replyForwardError,
       selectMessage,
       moveSelectedMessage,
+      runSearch,
+      clearSearch,
       composeOpen,
       composeDraft,
       composeSession,
@@ -316,6 +406,7 @@ export function MailboxProvider({ children }: { children: ReactNode }) {
     }),
     [
       closeCompose,
+      clearSearch,
       composeDraft,
       composeOpen,
       composeSession,
@@ -335,6 +426,11 @@ export function MailboxProvider({ children }: { children: ReactNode }) {
       openCompose,
       replyForwardError,
       replyForwardLoading,
+      runSearch,
+      searchError,
+      searchLoading,
+      searchQuery,
+      searchResults,
       selectFolder,
       selectMessage,
       selectedFolder,
@@ -348,14 +444,28 @@ export function MailboxProvider({ children }: { children: ReactNode }) {
 }
 
 export function MailboxFrame({ user }: { user: AuthUser }) {
-  const { selectedFolderName } = useMailboxContext();
+  const { clearSearch, runSearch, searchLoading, searchQuery, selectedFolderName } =
+    useMailboxContext();
 
   return (
     <AppFrame
       eyebrow={user.registered ? 'Registration complete' : 'Welcome back'}
-      headerAside={<UserBadge user={user} />}
+      headerAside={
+        <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-center sm:justify-end">
+          <SearchBar
+            activeQuery={searchQuery}
+            key={searchQuery ?? 'mailbox-search'}
+            loading={searchLoading}
+            onClear={clearSearch}
+            onSearch={runSearch}
+          />
+          <div className="shrink-0">
+            <UserBadge user={user} />
+          </div>
+        </div>
+      }
       sidebar={<MailboxSidebar />}
-      title={selectedFolderName}
+      title={searchQuery ? 'Search' : selectedFolderName}
     >
       <MailboxContent />
     </AppFrame>
@@ -394,23 +504,39 @@ export function MailboxContent() {
     moveSelectedMessage,
     replyForwardError,
     replyForwardLoading,
+    searchError,
+    searchLoading,
+    searchQuery,
+    searchResults,
     selectedMessage,
     selectedMessageId,
     selectMessage,
   } = useMailboxContext();
+  const showingSearchResults = searchQuery !== null;
 
   return (
     <>
       <section className="grid min-h-[calc(100vh-8.5rem)] min-w-0 lg:grid-cols-[minmax(20rem,28rem)_minmax(0,1fr)]">
         <div className="border-b border-line bg-panel lg:border-b-0 lg:border-r">
           <MessageListHeader />
-          <MessageList
-            error={messagesError}
-            loading={messagesLoading}
-            messages={messages}
-            onSelectMessage={selectMessage}
-            selectedMessageId={selectedMessageId}
-          />
+          {showingSearchResults ? (
+            <SearchResultsView
+              error={searchError}
+              loading={searchLoading}
+              messages={searchResults}
+              onSelectMessage={selectMessage}
+              query={searchQuery}
+              selectedMessageId={selectedMessageId}
+            />
+          ) : (
+            <MessageList
+              error={messagesError}
+              loading={messagesLoading}
+              messages={messages}
+              onSelectMessage={selectMessage}
+              selectedMessageId={selectedMessageId}
+            />
+          )}
         </div>
         <div className="min-w-0 bg-surface">
           <ReadingPane
@@ -440,11 +566,12 @@ export function MailboxContent() {
 }
 
 function MessageListHeader() {
-  const { openCompose, selectedFolderName } = useMailboxContext();
+  const { openCompose, searchQuery, selectedFolderName } = useMailboxContext();
+  const title = searchQuery ? `Search: ${searchQuery}` : selectedFolderName;
 
   return (
     <div className="flex items-center justify-between gap-3 border-b border-line px-5 py-4 lg:px-6">
-      <p className="min-w-0 truncate text-sm font-semibold text-ink">{selectedFolderName}</p>
+      <p className="min-w-0 truncate text-sm font-semibold text-ink">{title}</p>
       <Button className="w-auto px-3" onClick={openCompose} variant="primary">
         Compose
       </Button>

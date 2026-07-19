@@ -3,6 +3,9 @@ import { classNames } from '../lib/classNames';
 import type { MessageListItem } from './types';
 
 type MessageListProps = {
+  ariaLabel?: string;
+  emptyLabel?: string;
+  loadingLabel?: string;
   messages: MessageListItem[];
   selectedMessageId: number | null;
   loading: boolean;
@@ -16,6 +19,9 @@ const listDateFormatter = new Intl.DateTimeFormat(undefined, {
 });
 
 export function MessageList({
+  ariaLabel = 'Messages',
+  emptyLabel = 'No messages in this folder',
+  loadingLabel = 'Loading messages',
   messages,
   selectedMessageId,
   loading,
@@ -23,7 +29,7 @@ export function MessageList({
   onSelectMessage,
 }: MessageListProps) {
   if (loading && messages.length === 0) {
-    return <ListStatus label="Loading messages" />;
+    return <ListStatus label={loadingLabel} />;
   }
 
   if (error) {
@@ -31,11 +37,11 @@ export function MessageList({
   }
 
   if (messages.length === 0) {
-    return <ListStatus label="No messages in this folder" />;
+    return <ListStatus label={emptyLabel} />;
   }
 
   return (
-    <div className="divide-y divide-line" role="list" aria-label="Messages">
+    <div className="divide-y divide-line" role="list" aria-label={ariaLabel}>
       {messages.map((message) => {
         const selected = selectedMessageId === message.id;
 

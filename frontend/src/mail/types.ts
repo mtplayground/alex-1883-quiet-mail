@@ -35,6 +35,11 @@ export type MessagesResponse = {
   messages: MessageListItem[];
 };
 
+export type SearchMessagesResponse = {
+  query: string;
+  messages: MessageListItem[];
+};
+
 export type MessageResponse = {
   message: Message;
 };
