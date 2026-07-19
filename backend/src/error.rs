@@ -29,6 +29,8 @@ pub enum AppError {
     #[error("request is not authenticated")]
     Unauthorized,
     #[error("{message}")]
+    BadRequest { message: String },
+    #[error("{message}")]
     NotFound { message: String },
     #[error("email service failed")]
     Email { detail: String },
@@ -49,6 +51,7 @@ impl IntoResponse for AppError {
             | AppError::PasswordHash { .. } => StatusCode::SERVICE_UNAVAILABLE,
             AppError::Email { .. } => StatusCode::BAD_GATEWAY,
             AppError::Auth { .. } | AppError::Unauthorized => StatusCode::UNAUTHORIZED,
+            AppError::BadRequest { .. } => StatusCode::BAD_REQUEST,
             AppError::NotFound { .. } => StatusCode::NOT_FOUND,
         };
         let message = match &self {
@@ -65,6 +68,7 @@ impl IntoResponse for AppError {
                 "authentication required".to_owned()
             }
             AppError::Unauthorized => "authentication required".to_owned(),
+            AppError::BadRequest { message } => message.clone(),
             AppError::NotFound { message } => message.clone(),
             AppError::Email { detail } => {
                 tracing::warn!(%detail, "email service failed");
