@@ -1,6 +1,13 @@
 import { requestJson } from '../api/client';
 
-import type { FoldersResponse, MessageResponse, MessagesResponse, MoveAction } from './types';
+import type {
+  ComposePayload,
+  FoldersResponse,
+  MessageResponse,
+  MessagesResponse,
+  MoveAction,
+  SendMessageResponse,
+} from './types';
 
 export function fetchFolders() {
   return requestJson<FoldersResponse>('/api/mailbox/folders');
@@ -23,5 +30,25 @@ export function moveMessage(messageId: number, action: MoveAction) {
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({ action }),
+  });
+}
+
+export function sendMessage(payload: ComposePayload) {
+  return requestJson<SendMessageResponse>('/api/mailbox/compose/send', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(payload),
+  });
+}
+
+export function saveDraft(payload: ComposePayload) {
+  return requestJson<MessageResponse>('/api/mailbox/drafts', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(payload),
   });
 }

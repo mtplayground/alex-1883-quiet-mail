@@ -39,4 +39,29 @@ export type MessageResponse = {
   message: Message;
 };
 
+export type EmailDelivery =
+  | {
+      sent: {
+        provider_message_id: string;
+      };
+    }
+  | {
+      skipped: {
+        reason: string;
+      };
+    };
+
+export type SendMessageResponse = {
+  message: Message;
+  delivery: EmailDelivery;
+};
+
+export type ComposePayload = {
+  to: string[];
+  cc: string[];
+  bcc: string[];
+  subject: string;
+  body: string;
+};
+
 export type MoveAction = 'archive' | 'trash' | 'restore';

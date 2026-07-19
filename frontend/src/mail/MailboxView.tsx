@@ -10,8 +10,10 @@ import {
 
 import type { AuthUser } from '../auth/types';
 import { AppFrame } from '../components/layout/AppFrame';
+import { Button } from '../components/ui/Button';
 import { UserBadge } from '../components/ui/UserBadge';
 
+import { ComposePanel } from './ComposePanel';
 import { FolderSidebar } from './FolderSidebar';
 import { MessageList } from './MessageList';
 import { ReadingPane } from './ReadingPane';
@@ -35,6 +37,10 @@ type MailboxContextValue = {
   moveError: string | null;
   selectMessage: (messageId: number) => void;
   moveSelectedMessage: (action: MoveAction) => void;
+  composeOpen: boolean;
+  openCompose: () => void;
+  closeCompose: () => void;
+  handleComposedMessage: (message: Message) => void;
 };
 
 const MailboxContext = createContext<MailboxContextValue | undefined>(undefined);
@@ -52,6 +58,7 @@ export function MailboxProvider({ children }: { children: ReactNode }) {
   const [detailError, setDetailError] = useState<string | null>(null);
   const [moveLoading, setMoveLoading] = useState(false);
   const [moveError, setMoveError] = useState<string | null>(null);
+  const [composeOpen, setComposeOpen] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -181,6 +188,25 @@ export function MailboxProvider({ children }: { children: ReactNode }) {
     [selectedFolder, selectedMessage],
   );
 
+  const openCompose = useCallback(() => {
+    setComposeOpen(true);
+  }, []);
+
+  const closeCompose = useCallback(() => {
+    setComposeOpen(false);
+  }, []);
+
+  const handleComposedMessage = useCallback(
+    (message: Message) => {
+      if (message.folder_key !== selectedFolder) {
+        return;
+      }
+
+      setMessages((current) => [toListItem(message), ...current]);
+    },
+    [selectedFolder],
+  );
+
   const selectedFolderName = useMemo(
     () => folders.find((folder) => folder.key === selectedFolder)?.display_name ?? 'Inbox',
     [folders, selectedFolder],
@@ -204,18 +230,26 @@ export function MailboxProvider({ children }: { children: ReactNode }) {
       moveError,
       selectMessage,
       moveSelectedMessage,
+      composeOpen,
+      openCompose,
+      closeCompose,
+      handleComposedMessage,
     }),
     [
+      closeCompose,
+      composeOpen,
       detailError,
       detailLoading,
       folders,
       foldersLoading,
+      handleComposedMessage,
       messages,
       messagesError,
       messagesLoading,
       moveError,
       moveLoading,
       moveSelectedMessage,
+      openCompose,
       selectFolder,
       selectMessage,
       selectedFolder,
@@ -258,45 +292,66 @@ export function MailboxSidebar() {
 
 export function MailboxContent() {
   const {
+    closeCompose,
+    composeOpen,
     detailError,
     detailLoading,
+    handleComposedMessage,
     messages,
     messagesError,
     messagesLoading,
     moveError,
     moveLoading,
     moveSelectedMessage,
-    selectedFolderName,
     selectedMessage,
     selectedMessageId,
     selectMessage,
   } = useMailboxContext();
 
   return (
-    <section className="grid min-h-[calc(100vh-8.5rem)] min-w-0 lg:grid-cols-[minmax(20rem,28rem)_minmax(0,1fr)]">
-      <div className="border-b border-line bg-panel lg:border-b-0 lg:border-r">
-        <div className="border-b border-line px-5 py-4 lg:px-6">
-          <p className="text-sm font-semibold text-ink">{selectedFolderName}</p>
+    <>
+      <section className="grid min-h-[calc(100vh-8.5rem)] min-w-0 lg:grid-cols-[minmax(20rem,28rem)_minmax(0,1fr)]">
+        <div className="border-b border-line bg-panel lg:border-b-0 lg:border-r">
+          <MessageListHeader />
+          <MessageList
+            error={messagesError}
+            loading={messagesLoading}
+            messages={messages}
+            onSelectMessage={selectMessage}
+            selectedMessageId={selectedMessageId}
+          />
         </div>
-        <MessageList
-          error={messagesError}
-          loading={messagesLoading}
-          messages={messages}
-          onSelectMessage={selectMessage}
-          selectedMessageId={selectedMessageId}
-        />
-      </div>
-      <div className="min-w-0 bg-surface">
-        <ReadingPane
-          error={detailError}
-          loading={detailLoading}
-          message={selectedMessage}
-          moveError={moveError}
-          moveLoading={moveLoading}
-          onMoveMessage={moveSelectedMessage}
-        />
-      </div>
-    </section>
+        <div className="min-w-0 bg-surface">
+          <ReadingPane
+            error={detailError}
+            loading={detailLoading}
+            message={selectedMessage}
+            moveError={moveError}
+            moveLoading={moveLoading}
+            onMoveMessage={moveSelectedMessage}
+          />
+        </div>
+      </section>
+      <ComposePanel
+        onClose={closeCompose}
+        onDraftSaved={handleComposedMessage}
+        onSent={handleComposedMessage}
+        open={composeOpen}
+      />
+    </>
+  );
+}
+
+function MessageListHeader() {
+  const { openCompose, selectedFolderName } = useMailboxContext();
+
+  return (
+    <div className="flex items-center justify-between gap-3 border-b border-line px-5 py-4 lg:px-6">
+      <p className="min-w-0 truncate text-sm font-semibold text-ink">{selectedFolderName}</p>
+      <Button className="w-auto px-3" onClick={openCompose} variant="primary">
+        Compose
+      </Button>
+    </div>
   );
 }
 
