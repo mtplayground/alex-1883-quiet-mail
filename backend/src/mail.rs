@@ -118,10 +118,16 @@ pub struct MessagesResponse {
     pub messages: Vec<MessageListItem>,
 }
 
+#[derive(Debug, Serialize)]
+pub struct MessageResponse {
+    pub message: Message,
+}
+
 pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/folders", get(list_folders))
         .route("/folders/:folder_key/messages", get(list_messages))
+        .route("/messages/:message_id", get(message_detail))
 }
 
 async fn list_folders(State(state): State<AppState>) -> Result<Json<FoldersResponse>, AppError> {
@@ -145,6 +151,15 @@ async fn list_messages(
     }))
 }
 
+async fn message_detail(
+    State(state): State<AppState>,
+    Path(message_id): Path<i64>,
+) -> Result<Json<MessageResponse>, AppError> {
+    let message = fetch_message_detail_and_mark_read(&state.database, message_id).await?;
+
+    Ok(Json(MessageResponse { message }))
+}
+
 pub async fn fetch_folders(database: &Database) -> Result<Vec<FolderSummary>, AppError> {
     sqlx::query_as::<_, FolderSummary>(
         r#"
@@ -156,6 +171,67 @@ pub async fn fetch_folders(database: &Database) -> Result<Vec<FolderSummary>, Ap
     .fetch_all(database.pool())
     .await
     .map_err(|source| AppError::Database { source })
+}
+
+pub async fn fetch_message_detail_and_mark_read(
+    database: &Database,
+    message_id: i64,
+) -> Result<Message, AppError> {
+    let mut transaction = database
+        .pool()
+        .begin()
+        .await
+        .map_err(|source| AppError::Database { source })?;
+
+    sqlx::query(
+        r#"
+        UPDATE messages
+        SET is_read = TRUE
+        WHERE id = $1 AND is_read = FALSE
+        "#,
+    )
+    .bind(message_id)
+    .execute(&mut *transaction)
+    .await
+    .map_err(|source| AppError::Database { source })?;
+
+    let message = sqlx::query_as::<_, Message>(
+        r#"
+        SELECT
+            id,
+            folder_key,
+            sender,
+            to_recipients,
+            cc_recipients,
+            bcc_recipients,
+            subject,
+            body,
+            snippet,
+            sent_at,
+            is_read,
+            thread_root_id,
+            reply_to_message_id,
+            forwarded_from_message_id,
+            created_at,
+            updated_at
+        FROM messages
+        WHERE id = $1
+        "#,
+    )
+    .bind(message_id)
+    .fetch_optional(&mut *transaction)
+    .await
+    .map_err(|source| AppError::Database { source })?
+    .ok_or_else(|| AppError::NotFound {
+        message: "message not found".to_owned(),
+    })?;
+
+    transaction
+        .commit()
+        .await
+        .map_err(|source| AppError::Database { source })?;
+
+    Ok(message)
 }
 
 pub async fn fetch_messages_for_folder(
