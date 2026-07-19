@@ -3,6 +3,7 @@ mod app_state;
 mod auth;
 mod config;
 mod db;
+mod email;
 mod error;
 mod mail;
 mod router;

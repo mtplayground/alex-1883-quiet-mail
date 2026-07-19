@@ -308,6 +308,67 @@ pub async fn move_message_to_folder(
     })
 }
 
+pub struct SentMessageInsert {
+    pub sender: String,
+    pub to_recipients: Vec<String>,
+    pub cc_recipients: Vec<String>,
+    pub bcc_recipients: Vec<String>,
+    pub subject: String,
+    pub body: String,
+    pub snippet: String,
+}
+
+pub async fn insert_sent_message(
+    database: &Database,
+    message: SentMessageInsert,
+) -> Result<Message, AppError> {
+    sqlx::query_as::<_, Message>(
+        r#"
+        INSERT INTO messages (
+            folder_key,
+            sender,
+            to_recipients,
+            cc_recipients,
+            bcc_recipients,
+            subject,
+            body,
+            snippet,
+            sent_at,
+            is_read
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), TRUE)
+        RETURNING
+            id,
+            folder_key,
+            sender,
+            to_recipients,
+            cc_recipients,
+            bcc_recipients,
+            subject,
+            body,
+            snippet,
+            sent_at,
+            is_read,
+            thread_root_id,
+            reply_to_message_id,
+            forwarded_from_message_id,
+            created_at,
+            updated_at
+        "#,
+    )
+    .bind(SystemFolder::Sent.key())
+    .bind(message.sender)
+    .bind(message.to_recipients)
+    .bind(message.cc_recipients)
+    .bind(message.bcc_recipients)
+    .bind(message.subject)
+    .bind(message.body)
+    .bind(message.snippet)
+    .fetch_one(database.pool())
+    .await
+    .map_err(|source| AppError::Database { source })
+}
+
 pub async fn fetch_messages_for_folder(
     database: &Database,
     folder: SystemFolder,
