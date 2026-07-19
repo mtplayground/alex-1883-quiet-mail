@@ -54,6 +54,29 @@ impl IntoResponse for AppError {
             AppError::BadRequest { .. } => StatusCode::BAD_REQUEST,
             AppError::NotFound { .. } => StatusCode::NOT_FOUND,
         };
+
+        match &self {
+            AppError::Config { message, detail } => {
+                tracing::error!(%message, ?detail, "configuration error");
+            }
+            AppError::Database { source } => {
+                tracing::error!(error = ?source, "database operation failed");
+            }
+            AppError::Migration { source } => {
+                tracing::error!(error = ?source, "database migration failed");
+            }
+            AppError::PasswordHash { detail } => {
+                tracing::error!(%detail, "password hashing failed");
+            }
+            AppError::Auth { detail } => {
+                tracing::warn!(%detail, "authentication failed");
+            }
+            AppError::Email { detail } => {
+                tracing::warn!(%detail, "email service failed");
+            }
+            AppError::Unauthorized | AppError::BadRequest { .. } | AppError::NotFound { .. } => {}
+        }
+
         let message = match &self {
             AppError::Config { message, detail } => detail
                 .as_ref()
@@ -63,17 +86,11 @@ impl IntoResponse for AppError {
             AppError::PasswordHash { detail } => {
                 format!("account bootstrap did not complete: {detail}")
             }
-            AppError::Auth { detail } => {
-                tracing::warn!(%detail, "authentication failed");
-                "authentication required".to_owned()
-            }
+            AppError::Auth { .. } => "authentication required".to_owned(),
             AppError::Unauthorized => "authentication required".to_owned(),
             AppError::BadRequest { message } => message.clone(),
             AppError::NotFound { message } => message.clone(),
-            AppError::Email { detail } => {
-                tracing::warn!(%detail, "email service failed");
-                "email service is unavailable".to_owned()
-            }
+            AppError::Email { .. } => "email service is unavailable".to_owned(),
         };
 
         (

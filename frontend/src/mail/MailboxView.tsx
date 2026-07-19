@@ -9,6 +9,7 @@ import {
   type ReactNode,
 } from 'react';
 
+import { messageFromError } from '../api/client';
 import type { AuthUser } from '../auth/types';
 import { AppFrame } from '../components/layout/AppFrame';
 import { Button } from '../components/ui/Button';
@@ -133,13 +134,13 @@ export function MailboxProvider({ children }: { children: ReactNode }) {
 
         setMessages(response.messages);
       })
-      .catch(() => {
+      .catch((error) => {
         if (!active) {
           return;
         }
 
         setMessages([]);
-        setMessagesError('Messages could not be loaded.');
+        setMessagesError(messageFromError(error, 'Messages could not be loaded.'));
       })
       .finally(() => {
         if (active) {
@@ -191,9 +192,9 @@ export function MailboxProvider({ children }: { children: ReactNode }) {
           ),
         );
       })
-      .catch(() => {
+      .catch((error) => {
         setSelectedMessage(null);
-        setDetailError('Message could not be opened.');
+        setDetailError(messageFromError(error, 'Message could not be opened.'));
       })
       .finally(() => {
         setDetailLoading(false);
@@ -229,8 +230,8 @@ export function MailboxProvider({ children }: { children: ReactNode }) {
             ),
           );
         })
-        .catch(() => {
-          setMoveError('Message could not be moved.');
+        .catch((error) => {
+          setMoveError(messageFromError(error, 'Message could not be moved.'));
         })
         .finally(() => {
           setMoveLoading(false);
@@ -276,13 +277,13 @@ export function MailboxProvider({ children }: { children: ReactNode }) {
 
           setSearchResults(response.messages);
         })
-        .catch(() => {
+        .catch((error) => {
           if (searchRequestRef.current !== requestId) {
             return;
           }
 
           setSearchResults([]);
-          setSearchError('Search results could not be loaded.');
+          setSearchError(messageFromError(error, 'Search results could not be loaded.'));
         })
         .finally(() => {
           if (searchRequestRef.current === requestId) {
@@ -345,9 +346,12 @@ export function MailboxProvider({ children }: { children: ReactNode }) {
             return upsertListItem(current, draft);
           });
         })
-        .catch(() => {
+        .catch((error) => {
           setReplyForwardError(
-            kind === 'reply' ? 'Reply could not be prepared.' : 'Forward could not be prepared.',
+            messageFromError(
+              error,
+              kind === 'reply' ? 'Reply could not be prepared.' : 'Forward could not be prepared.',
+            ),
           );
         })
         .finally(() => {

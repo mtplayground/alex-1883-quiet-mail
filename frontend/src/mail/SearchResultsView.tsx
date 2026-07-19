@@ -21,8 +21,10 @@ export function SearchResultsView({
   return (
     <MessageList
       ariaLabel="Search results"
-      emptyLabel={`No results for "${query}"`}
+      emptyDescription={`No messages matched "${query}".`}
+      emptyTitle="No results"
       error={error}
+      errorTitle="Search unavailable"
       loading={loading}
       loadingLabel="Searching messages"
       messages={messages}
