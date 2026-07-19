@@ -32,6 +32,9 @@ pub struct OutboundEmail {
     pub html: Option<String>,
     pub text: Option<String>,
     pub reply_to: Option<String>,
+    pub thread_root_id: Option<i64>,
+    pub reply_to_message_id: Option<i64>,
+    pub forwarded_from_message_id: Option<i64>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -198,6 +201,9 @@ impl OutboundEmail {
             subject: self.subject,
             body,
             snippet,
+            thread_root_id: self.thread_root_id,
+            reply_to_message_id: self.reply_to_message_id,
+            forwarded_from_message_id: self.forwarded_from_message_id,
         }
     }
 }

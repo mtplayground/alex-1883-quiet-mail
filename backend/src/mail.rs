@@ -163,6 +163,9 @@ pub struct ComposeMessageRequest {
     pub bcc: Vec<String>,
     pub subject: String,
     pub body: String,
+    pub thread_root_id: Option<i64>,
+    pub reply_to_message_id: Option<i64>,
+    pub forwarded_from_message_id: Option<i64>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -192,6 +195,8 @@ pub fn routes() -> Router<AppState> {
         .route("/drafts", get(list_drafts).post(save_draft))
         .route("/drafts/:message_id", put(update_draft))
         .route("/messages/:message_id", get(message_detail))
+        .route("/messages/:message_id/reply", post(create_reply_draft))
+        .route("/messages/:message_id/forward", post(create_forward_draft))
         .route("/messages/:message_id/move", post(move_message))
 }
 
@@ -273,6 +278,38 @@ async fn update_draft(
     Ok(Json(MessageResponse { message }))
 }
 
+async fn create_reply_draft(
+    State(state): State<AppState>,
+    Extension(user): Extension<AuthenticatedUser>,
+    Path(message_id): Path<i64>,
+) -> Result<Json<MessageResponse>, AppError> {
+    let message = create_threaded_draft(
+        &state.database,
+        message_id,
+        ThreadedDraftKind::Reply,
+        user.email,
+    )
+    .await?;
+
+    Ok(Json(MessageResponse { message }))
+}
+
+async fn create_forward_draft(
+    State(state): State<AppState>,
+    Extension(user): Extension<AuthenticatedUser>,
+    Path(message_id): Path<i64>,
+) -> Result<Json<MessageResponse>, AppError> {
+    let message = create_threaded_draft(
+        &state.database,
+        message_id,
+        ThreadedDraftKind::Forward,
+        user.email,
+    )
+    .await?;
+
+    Ok(Json(MessageResponse { message }))
+}
+
 async fn move_message(
     State(state): State<AppState>,
     Path(message_id): Path<i64>,
@@ -317,6 +354,9 @@ impl ComposeMessageRequest {
             html: None,
             text: Some(self.body),
             reply_to: None,
+            thread_root_id: self.thread_root_id,
+            reply_to_message_id: self.reply_to_message_id,
+            forwarded_from_message_id: self.forwarded_from_message_id,
         }
     }
 }
@@ -334,8 +374,79 @@ impl SaveDraftRequest {
             subject: self.subject.trim().to_owned(),
             body,
             snippet,
+            thread_root_id: None,
+            reply_to_message_id: None,
+            forwarded_from_message_id: None,
         }
     }
+}
+
+#[derive(Debug, Clone, Copy)]
+enum ThreadedDraftKind {
+    Reply,
+    Forward,
+}
+
+impl ThreadedDraftKind {
+    fn subject(self, source: &Message) -> String {
+        let prefix = match self {
+            Self::Reply => "Re:",
+            Self::Forward => "Fwd:",
+        };
+
+        if source
+            .subject
+            .get(..prefix.len())
+            .is_some_and(|value| value.eq_ignore_ascii_case(prefix))
+        {
+            source.subject.clone()
+        } else {
+            format!("{prefix} {}", source.subject)
+        }
+    }
+
+    fn body(self, source: &Message) -> String {
+        match self {
+            Self::Reply => quoted_reply_body(source),
+            Self::Forward => forwarded_body(source),
+        }
+    }
+
+    fn to_recipients(self, source: &Message) -> Vec<String> {
+        match self {
+            Self::Reply => vec![source.sender.clone()],
+            Self::Forward => Vec::new(),
+        }
+    }
+}
+
+fn quoted_reply_body(source: &Message) -> String {
+    let quoted = source
+        .body
+        .lines()
+        .map(|line| format!("> {line}"))
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    format!(
+        "\n\nOn {}, {} wrote:\n{}",
+        source.sent_at.to_rfc3339(),
+        source.sender,
+        quoted
+    )
+}
+
+fn forwarded_body(source: &Message) -> String {
+    let to = source.to_recipients.join(", ");
+
+    format!(
+        "\n\nForwarded message\nFrom: {}\nTo: {}\nDate: {}\nSubject: {}\n\n{}",
+        source.sender,
+        to,
+        source.sent_at.to_rfc3339(),
+        source.subject,
+        source.body
+    )
 }
 
 fn normalize_recipients<'a>(recipients: impl IntoIterator<Item = &'a String>) -> Vec<String> {
@@ -349,6 +460,41 @@ fn normalize_recipients<'a>(recipients: impl IntoIterator<Item = &'a String>) ->
 pub fn snippet_from_body(body: &str) -> String {
     let normalized = body.split_whitespace().collect::<Vec<_>>().join(" ");
     normalized.chars().take(160).collect()
+}
+
+async fn create_threaded_draft(
+    database: &Database,
+    source_message_id: i64,
+    kind: ThreadedDraftKind,
+    sender: String,
+) -> Result<Message, AppError> {
+    let source = fetch_message_by_id(database, source_message_id).await?;
+    let body = kind.body(&source);
+    let snippet = snippet_from_body(&body);
+    let thread_root_id = Some(source.thread_root_id.unwrap_or(source.id));
+
+    insert_draft_message(
+        database,
+        DraftMessageUpsert {
+            sender,
+            to_recipients: kind.to_recipients(&source),
+            cc_recipients: Vec::new(),
+            bcc_recipients: Vec::new(),
+            subject: kind.subject(&source),
+            body,
+            snippet,
+            thread_root_id,
+            reply_to_message_id: match kind {
+                ThreadedDraftKind::Reply => Some(source.id),
+                ThreadedDraftKind::Forward => None,
+            },
+            forwarded_from_message_id: match kind {
+                ThreadedDraftKind::Reply => None,
+                ThreadedDraftKind::Forward => Some(source.id),
+            },
+        },
+    )
+    .await
 }
 
 pub async fn fetch_folders(database: &Database) -> Result<Vec<FolderSummary>, AppError> {
@@ -425,6 +571,42 @@ pub async fn fetch_message_detail_and_mark_read(
     Ok(message)
 }
 
+pub async fn fetch_message_by_id(
+    database: &Database,
+    message_id: i64,
+) -> Result<Message, AppError> {
+    sqlx::query_as::<_, Message>(
+        r#"
+        SELECT
+            id,
+            folder_key,
+            sender,
+            to_recipients,
+            cc_recipients,
+            bcc_recipients,
+            subject,
+            body,
+            snippet,
+            sent_at,
+            is_read,
+            thread_root_id,
+            reply_to_message_id,
+            forwarded_from_message_id,
+            created_at,
+            updated_at
+        FROM messages
+        WHERE id = $1
+        "#,
+    )
+    .bind(message_id)
+    .fetch_optional(database.pool())
+    .await
+    .map_err(|source| AppError::Database { source })?
+    .ok_or_else(|| AppError::NotFound {
+        message: "message not found".to_owned(),
+    })
+}
+
 pub async fn move_message_to_folder(
     database: &Database,
     message_id: i64,
@@ -472,6 +654,9 @@ pub struct SentMessageInsert {
     pub subject: String,
     pub body: String,
     pub snippet: String,
+    pub thread_root_id: Option<i64>,
+    pub reply_to_message_id: Option<i64>,
+    pub forwarded_from_message_id: Option<i64>,
 }
 
 pub struct DraftMessageUpsert {
@@ -482,6 +667,9 @@ pub struct DraftMessageUpsert {
     pub subject: String,
     pub body: String,
     pub snippet: String,
+    pub thread_root_id: Option<i64>,
+    pub reply_to_message_id: Option<i64>,
+    pub forwarded_from_message_id: Option<i64>,
 }
 
 pub async fn insert_sent_message(
@@ -499,10 +687,13 @@ pub async fn insert_sent_message(
             subject,
             body,
             snippet,
+            thread_root_id,
+            reply_to_message_id,
+            forwarded_from_message_id,
             sent_at,
             is_read
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), TRUE)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW(), TRUE)
         RETURNING
             id,
             folder_key,
@@ -530,6 +721,9 @@ pub async fn insert_sent_message(
     .bind(message.subject)
     .bind(message.body)
     .bind(message.snippet)
+    .bind(message.thread_root_id)
+    .bind(message.reply_to_message_id)
+    .bind(message.forwarded_from_message_id)
     .fetch_one(database.pool())
     .await
     .map_err(|source| AppError::Database { source })
@@ -550,10 +744,13 @@ pub async fn insert_draft_message(
             subject,
             body,
             snippet,
+            thread_root_id,
+            reply_to_message_id,
+            forwarded_from_message_id,
             sent_at,
             is_read
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), TRUE)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW(), TRUE)
         RETURNING
             id,
             folder_key,
@@ -581,6 +778,9 @@ pub async fn insert_draft_message(
     .bind(message.subject)
     .bind(message.body)
     .bind(message.snippet)
+    .bind(message.thread_root_id)
+    .bind(message.reply_to_message_id)
+    .bind(message.forwarded_from_message_id)
     .fetch_one(database.pool())
     .await
     .map_err(|source| AppError::Database { source })
