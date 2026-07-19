@@ -1,3 +1,4 @@
+mod account;
 mod config;
 mod db;
 mod error;
@@ -6,7 +7,10 @@ mod router;
 use tokio::net::TcpListener;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
-use crate::{config::Config, db::Database, error::AppError, router::build_router};
+use crate::{
+    account::bootstrap_single_account, config::Config, db::Database, error::AppError,
+    router::build_router,
+};
 
 #[tokio::main]
 async fn main() {
@@ -23,6 +27,7 @@ async fn run() -> Result<(), AppError> {
     config.log_startup_summary();
     let database = Database::connect(&config).await?;
     database.run_migrations().await?;
+    bootstrap_single_account(&database, config.bootstrap_account.as_ref()).await?;
 
     let address = config.socket_addr()?;
     let listener = TcpListener::bind(address)
