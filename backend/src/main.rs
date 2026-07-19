@@ -4,6 +4,7 @@ mod auth;
 mod config;
 mod db;
 mod error;
+mod mail;
 mod router;
 
 use tokio::net::TcpListener;
