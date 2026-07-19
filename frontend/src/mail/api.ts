@@ -6,6 +6,7 @@ import type {
   MessageResponse,
   MessagesResponse,
   MoveAction,
+  SearchMessagesResponse,
   SendMessageResponse,
 } from './types';
 
@@ -17,6 +18,10 @@ export function fetchMessages(folderKey: string) {
   return requestJson<MessagesResponse>(
     `/api/mailbox/folders/${encodeURIComponent(folderKey)}/messages`,
   );
+}
+
+export function searchMessages(query: string) {
+  return requestJson<SearchMessagesResponse>(`/api/mailbox/search?q=${encodeURIComponent(query)}`);
 }
 
 export function fetchMessage(messageId: number) {
