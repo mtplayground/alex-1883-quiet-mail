@@ -1,6 +1,6 @@
 import { classNames } from '../lib/classNames';
 
-import type { Message, MessageListItem } from './types';
+import type { MessageListItem } from './types';
 
 type MessageListProps = {
   messages: MessageListItem[];
@@ -10,22 +10,9 @@ type MessageListProps = {
   onSelectMessage: (messageId: number) => void;
 };
 
-type MessagePreviewProps = {
-  message: Message | null;
-  loading: boolean;
-  error: string | null;
-};
-
 const listDateFormatter = new Intl.DateTimeFormat(undefined, {
   month: 'short',
   day: 'numeric',
-});
-
-const detailDateFormatter = new Intl.DateTimeFormat(undefined, {
-  month: 'short',
-  day: 'numeric',
-  hour: 'numeric',
-  minute: '2-digit',
 });
 
 export function MessageList({
@@ -99,41 +86,8 @@ export function MessageList({
   );
 }
 
-export function MessagePreview({ message, loading, error }: MessagePreviewProps) {
-  if (loading) {
-    return <PreviewStatus label="Opening message" />;
-  }
-
-  if (error) {
-    return <PreviewStatus label={error} />;
-  }
-
-  if (!message) {
-    return <PreviewStatus label="Select a message" />;
-  }
-
-  return (
-    <article className="min-h-full px-6 py-6 lg:px-8">
-      <div className="border-b border-line pb-5">
-        <p className="text-sm text-ink-muted">{message.sender}</p>
-        <h2 className="mt-2 text-xl font-semibold text-ink">{message.subject}</h2>
-        <time className="mt-2 block text-xs text-ink-soft" dateTime={message.sent_at}>
-          {formatDate(message.sent_at, detailDateFormatter)}
-        </time>
-      </div>
-      <p className="whitespace-pre-wrap py-6 text-sm leading-7 text-ink">{message.body}</p>
-    </article>
-  );
-}
-
 function ListStatus({ label }: { label: string }) {
   return <div className="px-5 py-8 text-sm text-ink-muted lg:px-6">{label}</div>;
-}
-
-function PreviewStatus({ label }: { label: string }) {
-  return (
-    <div className="grid min-h-72 place-items-center px-6 text-sm text-ink-muted">{label}</div>
-  );
 }
 
 function formatDate(value: string, formatter: Intl.DateTimeFormat) {
