@@ -96,7 +96,7 @@ export function ComposePanel({ draft, open, onClose, onDraftSaved, onSent }: Com
   return (
     <aside
       aria-label="Compose message"
-      className="fixed inset-x-3 bottom-3 z-20 rounded-ui border border-line bg-panel/95 shadow-[0_18px_50px_rgb(var(--shadow-subtle)_/_0.18)] backdrop-blur-md sm:left-auto sm:right-5 sm:w-[32rem]"
+      className="app-surface-floating fixed inset-x-3 bottom-3 z-20 rounded-ui border sm:left-auto sm:right-5 sm:w-[32rem]"
     >
       <div className="flex items-center justify-between border-b border-line px-4 py-3">
         <h2 className="text-sm font-semibold text-ink">{title}</h2>

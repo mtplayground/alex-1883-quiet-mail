@@ -32,6 +32,10 @@ export default {
       },
       boxShadow: {
         subtle: '0 1px 2px rgb(var(--shadow-subtle) / 0.12)',
+        floating: '0 18px 50px rgb(var(--shadow-subtle) / 0.16)',
+      },
+      backgroundImage: {
+        app: 'var(--gradient-app)',
       },
       borderRadius: {
         ui: '0.5rem',
