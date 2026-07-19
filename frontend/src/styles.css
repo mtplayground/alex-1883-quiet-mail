@@ -76,3 +76,17 @@
     font: inherit;
   }
 }
+
+@layer components {
+  .app-surface {
+    @apply border-line bg-panel/90 shadow-subtle backdrop-blur-sm;
+  }
+
+  .app-surface-muted {
+    @apply border-line bg-surface/90 backdrop-blur-sm;
+  }
+
+  .app-surface-floating {
+    @apply border-line bg-panel/95 shadow-floating backdrop-blur-md;
+  }
+}

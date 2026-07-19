@@ -18,14 +18,14 @@ export function AppFrame({
   children,
 }: AppFrameProps) {
   return (
-    <main className="grid min-h-screen text-ink lg:grid-cols-[minmax(13rem,15rem)_minmax(0,1fr)]">
-      <aside className="border-b border-line bg-surface/90 px-5 py-6 shadow-subtle backdrop-blur-sm lg:border-b-0 lg:border-r lg:px-6 lg:py-7">
+    <main className="grid min-h-screen bg-app text-ink lg:grid-cols-[minmax(13rem,15rem)_minmax(0,1fr)]">
+      <aside className="app-surface-muted border-b px-5 py-6 lg:border-b-0 lg:border-r lg:px-6 lg:py-7">
         <div className="mb-8 text-sm font-semibold text-ink">{sidebarTitle}</div>
         {sidebar}
       </aside>
 
       <section className="grid min-w-0 grid-rows-[auto_1fr]" aria-label="Main content">
-        <header className="grid gap-5 border-b border-line bg-surface/80 px-6 py-7 backdrop-blur-sm lg:grid-cols-[minmax(0,1fr)_minmax(20rem,34rem)] lg:items-center lg:px-10">
+        <header className="app-surface-muted grid gap-5 border-b px-6 py-7 lg:grid-cols-[minmax(0,1fr)_minmax(20rem,34rem)] lg:items-center lg:px-10">
           <div className="min-w-0">
             <p className="mb-2 text-xs font-semibold uppercase text-ink-muted">{eyebrow}</p>
             <h1 className="text-3xl font-semibold text-ink">{title}</h1>
