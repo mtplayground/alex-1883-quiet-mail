@@ -30,6 +30,8 @@ pub enum AppError {
     Unauthorized,
     #[error("{message}")]
     NotFound { message: String },
+    #[error("email service failed")]
+    Email { detail: String },
 }
 
 #[derive(Debug, Serialize)]
@@ -45,6 +47,7 @@ impl IntoResponse for AppError {
             AppError::Database { .. }
             | AppError::Migration { .. }
             | AppError::PasswordHash { .. } => StatusCode::SERVICE_UNAVAILABLE,
+            AppError::Email { .. } => StatusCode::BAD_GATEWAY,
             AppError::Auth { .. } | AppError::Unauthorized => StatusCode::UNAUTHORIZED,
             AppError::NotFound { .. } => StatusCode::NOT_FOUND,
         };
@@ -63,6 +66,10 @@ impl IntoResponse for AppError {
             }
             AppError::Unauthorized => "authentication required".to_owned(),
             AppError::NotFound { message } => message.clone(),
+            AppError::Email { detail } => {
+                tracing::warn!(%detail, "email service failed");
+                "email service is unavailable".to_owned()
+            }
         };
 
         (
