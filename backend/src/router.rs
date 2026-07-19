@@ -17,11 +17,13 @@ struct DbReadyResponse {
 
 pub fn build_router(config: Config, database: Database) -> Router {
     let app_state = AppState::new(&config, database);
+    let mailbox = auth::protect_mailbox_routes(Router::new(), app_state.clone());
     let api = Router::new()
         .route("/health", get(health))
         .route("/health/db", get(db_ready))
         .route("/auth/login", get(auth::login))
-        .route("/auth/session", get(auth::session));
+        .route("/auth/session", get(auth::session))
+        .nest("/mailbox", mailbox);
 
     Router::new()
         .nest("/api", api)
