@@ -1,85 +1,36 @@
-Architecture plan for the 24-issue mailbox build
+Architecture plan for Issue #49: Apply colorful gradient background to the built frontend
+
+Current project shape
+- Backend: Rust Axum API in `backend/` with workspace configuration in root `Cargo.toml`.
+- Frontend: React + Vite + TypeScript SPA in `frontend/`.
+- Styling: Tailwind-backed global CSS in `frontend/src/styles.css`, with app composition in `frontend/src/App.tsx` and bootstrapping in `frontend/src/main.tsx`.
+- Tests: Playwright E2E specs in `e2e/`; root npm scripts drive frontend build/lint and Rust checks.
 
 Module structure and file organization
+- Keep the gradient implementation in the frontend only.
+- Define shared background/theme tokens at the global stylesheet level (`frontend/src/styles.css`) rather than duplicating gradients in individual components.
+- Use CSS custom properties for:
+  - global colorful app gradient
+  - dark-mode muted colorful app gradient
+  - neutral elevated surfaces used over the gradient
+  - borders/shadows needed for legibility
+- Apply the global gradient to `html`, `body`, and the React root/full-page wrapper so every route inherits the same background.
+- Update full-page containers in `frontend/src/App.tsx` so app frame, auth gate/loading wrapper, and login page do not use opaque neutral canvas backgrounds that hide the global gradient.
+- Preserve near-neutral panels/cards for mailbox sidebar, message list, reading pane, compose panel, and login card so text remains readable.
 
-- Use a two-part repository:
-  - `backend/`: Rust Axum API server.
-  - `frontend/`: React SPA.
-  - `migrations/` or `backend/migrations/`: sqlx-managed PostgreSQL migrations. Keep the choice consistent with the backend `sqlx::migrate!` path.
-  - `docs/`: deployment and run notes when Issue #24 lands.
-- Backend layout:
-  - `backend/src/main.rs`: process entrypoint, config load, DB pool creation, router boot.
-  - `backend/src/router.rs`: top-level route composition.
-  - `backend/src/config.rs`: environment parsing for database, JWT, account bootstrap, email service, CORS/public origin.
-  - `backend/src/db.rs`: PostgreSQL pool and readiness checks.
-  - `backend/src/error.rs`: shared API error type and Axum response mapping.
-  - `backend/src/auth/`: account bootstrap, password verification, JWT issue/validate, auth middleware.
-  - `backend/src/mail/`: folders, message queries, detail/read state, move actions, search, drafts, compose, reply, forward.
-  - `backend/src/email/`: adapter over the Ideavibes central email service with clear success/failure results.
-  - `backend/src/models/` or module-local model files: database row structs and API DTOs.
-- Frontend layout:
-  - `frontend/src/main.tsx` and `frontend/src/App.tsx`: React app entry and route/app composition.
-  - `frontend/src/api/`: typed fetch client, auth header handling, API response/error helpers.
-  - `frontend/src/auth/`: auth context, login state, guarded app shell.
-  - `frontend/src/components/ui/`: small shared primitives, theme tokens, layout shell.
-  - `frontend/src/components/mail/`: folder sidebar, message list, reading pane, compose panel, search bar/results.
-  - `frontend/src/styles/`: Tailwind base styles and theme variables, including dark-mode variant.
-  - `frontend/src/types/`: shared frontend DTO shapes matching backend API contracts.
+Shared types and contracts
+- No backend API or shared DTO changes are needed.
+- No database, auth, mail, or routing contract changes are needed.
+- Styling tokens are the only new shared contract: frontend components should reference the global CSS variables/Tailwind-compatible utility classes rather than hard-coded page backgrounds.
 
-Shared types and API contracts
-
-- Keep backend API DTOs explicit and serializable with `serde`; mirror only the needed shapes in frontend TypeScript rather than exposing DB rows directly.
-- Core DTOs:
-  - `LoginRequest`, `LoginResponse`.
-  - `FolderSummary`: id/key, display name, unread count.
-  - `MessageListItem`: id, folder, sender, recipients summary, subject, snippet, timestamp, read state.
-  - `MessageDetail`: list item fields plus full body, recipient lists, threading references, draft metadata where relevant.
-  - `MoveMessageRequest`: action enum for archive, trash, restore.
-  - `ComposeRequest`, `DraftRequest`, `ReplyForwardRequest`, `SearchResponse`.
-- Prefer stable folder keys: `inbox`, `sent`, `drafts`, `archive`, `trash`. They can be backed by an enum or fixed table, but API callers should not depend on mutable display labels.
-
-Issue dependency plan
-
-- Foundation:
-  - #1 creates the repo skeleton, React SPA, Axum backend, formatting/linting, and blank authenticated app shell.
-  - #2 adds PostgreSQL access, sqlx migrations, and DB readiness.
-  - #3 centralizes environment configuration and documents required variables in `.env.example`.
-  - #4 establishes the visual system, app frame, and reusable UI primitives.
-- Authentication:
-  - #5 adds the single-account model and bootstrap seed from environment.
-  - #6 implements login, password verification, and JWT issuing.
-  - #7 protects mailbox routes with JWT middleware.
-  - #8 adds login UI, auth context, token storage, and frontend route guarding.
-- Mailbox read/move flow:
-  - #9 defines messages, folders, threading columns, and seed inbox data.
-  - #10 exposes folder and message-list endpoints.
-  - #11 exposes message detail and marks messages read on open.
-  - #12 adds archive/trash/restore move behavior.
-  - #13 builds the sidebar and inbox list.
-  - #14 builds the reading pane and move controls.
-- Sending, drafts, and threading:
-  - #15 implements the outbound email adapter.
-  - #16 adds compose/send and draft endpoints.
-  - #17 adds reply/forward server support and threading references.
-  - #18 builds the compose panel.
-  - #19 wires reply/forward entry points into the reading pane and compose panel.
-- Search and polish:
-  - #20 adds backend search.
-  - #21 adds frontend search bar/results.
-  - #22 adds dark mode tokens and session-persisted toggle.
-  - #23 normalizes API/UI errors and empty states.
-  - #24 adds end-to-end coverage for login, compose/send, Sent visibility, folder move, and deployment docs.
+Dependencies between issues
+- Issue #49 depends on the existing frontend design system and app shell.
+- There are no other open implementation issues in this session, so it can be completed independently.
+- Because the gradient is global, changes should be verified across authenticated shell, login/auth gate states, and dark mode.
 
 Key design decisions
-
-- Use Axum for a JSON API and React as a separate SPA. Keep cross-boundary contracts small and stable.
-- Use PostgreSQL as the source of truth for accounts, folders, messages, drafts, read state, and threading. Avoid storing mailbox state only in frontend state.
-- Use `sqlx` migrations for every schema change, with application startup optionally running migrations before serving traffic.
-- Bootstrap exactly one account from environment credentials on first run; no registration surface is planned.
-- Store password hashes with a modern password hashing crate such as Argon2. JWTs should be signed with an environment-provided secret and sent by the frontend as bearer tokens.
-- Derive public origin from proxy-aware configuration. If CORS checks are added, accept `ALLOWED_CORS_ORIGIN` and do not gate static assets on the raw `Host` header.
-- Keep folder moves as state transitions on a single message record, not copies, except Sent records created after confirmed send success.
-- Keep drafts as messages in the Drafts folder with draft-specific update semantics. Sending a draft should create or move to Sent only after the email adapter reports success.
-- Search should start with practical PostgreSQL querying over subject, sender, and body, ordered by relevance and recency. Full text indexes can be added in the same migration if needed for acceptable performance.
-- The frontend design should stay minimal and airy: quiet neutral base, restrained accent color, generous spacing, subtle dividers, readable typography, and compact controls that support repeated mailbox use.
-- Error responses should use one shared backend shape so the frontend can show consistent login, fetch, send, and empty-state feedback.
+- Implement the colorful background as a restrained multi-stop gradient to satisfy the request without making the quiet-mail UI visually noisy.
+- Use a softer/muted gradient for dark mode to avoid high-contrast color bloom behind dark surfaces.
+- Keep content surfaces translucent or near-neutral with sufficient contrast; do not make message/card surfaces fully transparent.
+- Prefer global tokens and minimal component edits over broad markup rewrites, reducing regression risk.
+- Verification should include `npm --workspace frontend run build` and, if practical, frontend lint/check scripts.

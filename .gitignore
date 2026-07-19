@@ -1,7 +1,5 @@
 target/
 node_modules/
-frontend/dist/
-*.tsbuildinfo
 .gh_token
 .database_url
 .task_id
@@ -12,4 +10,6 @@ frontend/dist/
 .pipeline-state.json
 .gitkeep
 .progress
+frontend/dist/
+*.tsbuildinfo
 .env.production
