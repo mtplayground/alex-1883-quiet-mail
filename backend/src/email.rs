@@ -7,7 +7,7 @@ use crate::{
     config::{Config, EmailConfig},
     db::Database,
     error::AppError,
-    mail::{insert_sent_message, Message, SentMessageInsert},
+    mail::{insert_sent_message, snippet_from_body, Message, SentMessageInsert},
 };
 
 #[derive(Clone)]
@@ -200,9 +200,4 @@ impl OutboundEmail {
             snippet,
         }
     }
-}
-
-fn snippet_from_body(body: &str) -> String {
-    let normalized = body.split_whitespace().collect::<Vec<_>>().join(" ");
-    normalized.chars().take(160).collect()
 }

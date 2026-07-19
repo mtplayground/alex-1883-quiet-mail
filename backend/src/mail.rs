@@ -2,13 +2,19 @@
 
 use axum::{
     extract::{Path, State},
-    routing::{get, post},
-    Json, Router,
+    routing::{get, post, put},
+    Extension, Json, Router,
 };
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
-use crate::{app_state::AppState, db::Database, error::AppError};
+use crate::{
+    app_state::AppState,
+    auth::AuthenticatedUser,
+    db::Database,
+    email::{EmailDelivery, OutboundEmail},
+    error::AppError,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
@@ -141,6 +147,38 @@ pub struct MessageResponse {
     pub message: Message,
 }
 
+#[derive(Debug, Serialize)]
+pub struct SendMessageResponse {
+    pub message: Message,
+    pub delivery: EmailDelivery,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ComposeMessageRequest {
+    #[serde(default)]
+    pub to: Vec<String>,
+    #[serde(default)]
+    pub cc: Vec<String>,
+    #[serde(default)]
+    pub bcc: Vec<String>,
+    pub subject: String,
+    pub body: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct SaveDraftRequest {
+    #[serde(default)]
+    pub to: Vec<String>,
+    #[serde(default)]
+    pub cc: Vec<String>,
+    #[serde(default)]
+    pub bcc: Vec<String>,
+    #[serde(default)]
+    pub subject: String,
+    #[serde(default)]
+    pub body: String,
+}
+
 #[derive(Debug, Deserialize)]
 pub struct MoveMessageRequest {
     pub action: MoveAction,
@@ -150,6 +188,9 @@ pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/folders", get(list_folders))
         .route("/folders/:folder_key/messages", get(list_messages))
+        .route("/compose/send", post(send_message))
+        .route("/drafts", get(list_drafts).post(save_draft))
+        .route("/drafts/:message_id", put(update_draft))
         .route("/messages/:message_id", get(message_detail))
         .route("/messages/:message_id/move", post(move_message))
 }
@@ -184,6 +225,54 @@ async fn message_detail(
     Ok(Json(MessageResponse { message }))
 }
 
+async fn send_message(
+    State(state): State<AppState>,
+    Extension(user): Extension<AuthenticatedUser>,
+    Json(request): Json<ComposeMessageRequest>,
+) -> Result<Json<SendMessageResponse>, AppError> {
+    request.validate_for_send()?;
+    let sent = state
+        .email
+        .send_and_record(&state.database, request.into_outbound_email(user.email))
+        .await?;
+
+    Ok(Json(SendMessageResponse {
+        message: sent.message,
+        delivery: sent.delivery,
+    }))
+}
+
+async fn list_drafts(State(state): State<AppState>) -> Result<Json<MessagesResponse>, AppError> {
+    let messages = fetch_messages_for_folder(&state.database, SystemFolder::Drafts).await?;
+
+    Ok(Json(MessagesResponse {
+        folder_key: SystemFolder::Drafts.key().to_owned(),
+        messages,
+    }))
+}
+
+async fn save_draft(
+    State(state): State<AppState>,
+    Extension(user): Extension<AuthenticatedUser>,
+    Json(request): Json<SaveDraftRequest>,
+) -> Result<Json<MessageResponse>, AppError> {
+    let message = insert_draft_message(&state.database, request.into_draft(user.email)).await?;
+
+    Ok(Json(MessageResponse { message }))
+}
+
+async fn update_draft(
+    State(state): State<AppState>,
+    Extension(user): Extension<AuthenticatedUser>,
+    Path(message_id): Path<i64>,
+    Json(request): Json<SaveDraftRequest>,
+) -> Result<Json<MessageResponse>, AppError> {
+    let message =
+        update_draft_message(&state.database, message_id, request.into_draft(user.email)).await?;
+
+    Ok(Json(MessageResponse { message }))
+}
+
 async fn move_message(
     State(state): State<AppState>,
     Path(message_id): Path<i64>,
@@ -193,6 +282,73 @@ async fn move_message(
         move_message_to_folder(&state.database, message_id, request.action.target_folder()).await?;
 
     Ok(Json(MessageResponse { message }))
+}
+
+impl ComposeMessageRequest {
+    fn validate_for_send(&self) -> Result<(), AppError> {
+        if normalize_recipients(self.to.iter()).is_empty() {
+            return Err(AppError::BadRequest {
+                message: "at least one recipient is required".to_owned(),
+            });
+        }
+
+        if self.subject.trim().is_empty() {
+            return Err(AppError::BadRequest {
+                message: "subject is required".to_owned(),
+            });
+        }
+
+        if self.body.trim().is_empty() {
+            return Err(AppError::BadRequest {
+                message: "message body is required".to_owned(),
+            });
+        }
+
+        Ok(())
+    }
+
+    fn into_outbound_email(self, sender: String) -> OutboundEmail {
+        OutboundEmail {
+            sender,
+            to: normalize_recipients(self.to.iter()),
+            cc: normalize_recipients(self.cc.iter()),
+            bcc: normalize_recipients(self.bcc.iter()),
+            subject: self.subject.trim().to_owned(),
+            html: None,
+            text: Some(self.body),
+            reply_to: None,
+        }
+    }
+}
+
+impl SaveDraftRequest {
+    fn into_draft(self, sender: String) -> DraftMessageUpsert {
+        let body = self.body;
+        let snippet = snippet_from_body(&body);
+
+        DraftMessageUpsert {
+            sender,
+            to_recipients: normalize_recipients(self.to.iter()),
+            cc_recipients: normalize_recipients(self.cc.iter()),
+            bcc_recipients: normalize_recipients(self.bcc.iter()),
+            subject: self.subject.trim().to_owned(),
+            body,
+            snippet,
+        }
+    }
+}
+
+fn normalize_recipients<'a>(recipients: impl IntoIterator<Item = &'a String>) -> Vec<String> {
+    recipients
+        .into_iter()
+        .map(|value| value.trim().to_owned())
+        .filter(|value| !value.is_empty())
+        .collect()
+}
+
+pub fn snippet_from_body(body: &str) -> String {
+    let normalized = body.split_whitespace().collect::<Vec<_>>().join(" ");
+    normalized.chars().take(160).collect()
 }
 
 pub async fn fetch_folders(database: &Database) -> Result<Vec<FolderSummary>, AppError> {
@@ -318,6 +474,16 @@ pub struct SentMessageInsert {
     pub snippet: String,
 }
 
+pub struct DraftMessageUpsert {
+    pub sender: String,
+    pub to_recipients: Vec<String>,
+    pub cc_recipients: Vec<String>,
+    pub bcc_recipients: Vec<String>,
+    pub subject: String,
+    pub body: String,
+    pub snippet: String,
+}
+
 pub async fn insert_sent_message(
     database: &Database,
     message: SentMessageInsert,
@@ -367,6 +533,112 @@ pub async fn insert_sent_message(
     .fetch_one(database.pool())
     .await
     .map_err(|source| AppError::Database { source })
+}
+
+pub async fn insert_draft_message(
+    database: &Database,
+    message: DraftMessageUpsert,
+) -> Result<Message, AppError> {
+    sqlx::query_as::<_, Message>(
+        r#"
+        INSERT INTO messages (
+            folder_key,
+            sender,
+            to_recipients,
+            cc_recipients,
+            bcc_recipients,
+            subject,
+            body,
+            snippet,
+            sent_at,
+            is_read
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), TRUE)
+        RETURNING
+            id,
+            folder_key,
+            sender,
+            to_recipients,
+            cc_recipients,
+            bcc_recipients,
+            subject,
+            body,
+            snippet,
+            sent_at,
+            is_read,
+            thread_root_id,
+            reply_to_message_id,
+            forwarded_from_message_id,
+            created_at,
+            updated_at
+        "#,
+    )
+    .bind(SystemFolder::Drafts.key())
+    .bind(message.sender)
+    .bind(message.to_recipients)
+    .bind(message.cc_recipients)
+    .bind(message.bcc_recipients)
+    .bind(message.subject)
+    .bind(message.body)
+    .bind(message.snippet)
+    .fetch_one(database.pool())
+    .await
+    .map_err(|source| AppError::Database { source })
+}
+
+pub async fn update_draft_message(
+    database: &Database,
+    message_id: i64,
+    message: DraftMessageUpsert,
+) -> Result<Message, AppError> {
+    sqlx::query_as::<_, Message>(
+        r#"
+        UPDATE messages
+        SET
+            sender = $2,
+            to_recipients = $3,
+            cc_recipients = $4,
+            bcc_recipients = $5,
+            subject = $6,
+            body = $7,
+            snippet = $8,
+            sent_at = NOW(),
+            is_read = TRUE
+        WHERE id = $1 AND folder_key = $9
+        RETURNING
+            id,
+            folder_key,
+            sender,
+            to_recipients,
+            cc_recipients,
+            bcc_recipients,
+            subject,
+            body,
+            snippet,
+            sent_at,
+            is_read,
+            thread_root_id,
+            reply_to_message_id,
+            forwarded_from_message_id,
+            created_at,
+            updated_at
+        "#,
+    )
+    .bind(message_id)
+    .bind(message.sender)
+    .bind(message.to_recipients)
+    .bind(message.cc_recipients)
+    .bind(message.bcc_recipients)
+    .bind(message.subject)
+    .bind(message.body)
+    .bind(message.snippet)
+    .bind(SystemFolder::Drafts.key())
+    .fetch_optional(database.pool())
+    .await
+    .map_err(|source| AppError::Database { source })?
+    .ok_or_else(|| AppError::NotFound {
+        message: "draft not found".to_owned(),
+    })
 }
 
 pub async fn fetch_messages_for_folder(
