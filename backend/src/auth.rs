@@ -1,8 +1,9 @@
 use axum::{
     extract::State,
     http::{header::COOKIE, HeaderMap},
-    response::Redirect,
-    Json,
+    middleware::{self, Next},
+    response::{Redirect, Response},
+    Json, Router,
 };
 use jsonwebtoken::{decode, decode_header, jwk::JwkSet, Algorithm, DecodingKey, Validation};
 use serde::{Deserialize, Serialize};
@@ -40,6 +41,15 @@ pub(crate) struct PersistedUser {
     name: Option<String>,
     picture_url: Option<String>,
     registered: bool,
+}
+
+#[derive(Debug, Clone)]
+pub struct AuthenticatedUser {
+    pub sub: String,
+    pub email: String,
+    pub name: Option<String>,
+    pub picture_url: Option<String>,
+    pub registered: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -129,7 +139,44 @@ pub async fn session(
     State(state): State<AppState>,
     headers: HeaderMap,
 ) -> Result<Json<SessionResponse>, AppError> {
-    let token = session_cookie(&headers).ok_or(AppError::Unauthorized)?;
+    let user = authenticate(&state, &headers).await?.1;
+
+    Ok(Json(SessionResponse {
+        authenticated: true,
+        user,
+    }))
+}
+
+pub async fn require_auth(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    mut request: axum::extract::Request,
+    next: Next,
+) -> Result<Response, AppError> {
+    let user = authenticate(&state, &headers).await?.1;
+    let authenticated_user = AuthenticatedUser::from(user);
+    tracing::debug!(
+        user_sub_present = !authenticated_user.sub.is_empty(),
+        user_email_present = !authenticated_user.email.is_empty(),
+        user_name_present = authenticated_user.name.is_some(),
+        user_picture_present = authenticated_user.picture_url.is_some(),
+        registered = authenticated_user.registered,
+        "attached authenticated user"
+    );
+    request.extensions_mut().insert(authenticated_user);
+
+    Ok(next.run(request).await)
+}
+
+pub fn protect_mailbox_routes(routes: Router<AppState>, state: AppState) -> Router<AppState> {
+    routes.route_layer(middleware::from_fn_with_state(state, require_auth))
+}
+
+async fn authenticate(
+    state: &AppState,
+    headers: &HeaderMap,
+) -> Result<(SessionClaims, PersistedUser), AppError> {
+    let token = session_cookie(headers).ok_or(AppError::Unauthorized)?;
     let claims = state.auth.verify_session(&token).await?;
     tracing::debug!(
         issuer = %claims.iss,
@@ -140,10 +187,7 @@ pub async fn session(
     );
     let user = upsert_user(&state.database, &claims).await?;
 
-    Ok(Json(SessionResponse {
-        authenticated: true,
-        user,
-    }))
+    Ok((claims, user))
 }
 
 async fn upsert_user(
@@ -183,4 +227,16 @@ fn session_cookie(headers: &HeaderMap) -> Option<String> {
 
 fn frontend_root(self_url: &str) -> String {
     format!("{}/", self_url.trim_end_matches('/'))
+}
+
+impl From<PersistedUser> for AuthenticatedUser {
+    fn from(user: PersistedUser) -> Self {
+        Self {
+            sub: user.sub,
+            email: user.email,
+            name: user.name,
+            picture_url: user.picture_url,
+            registered: user.registered,
+        }
+    }
 }
