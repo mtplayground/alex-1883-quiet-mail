@@ -1,30 +1,22 @@
-import './styles.css';
+import { AppFrame } from './components/layout/AppFrame';
+import { SidebarNav } from './components/layout/SidebarNav';
+import { EmptyState } from './components/ui/EmptyState';
 
-const folders = ['Inbox', 'Sent', 'Drafts', 'Archive', 'Trash'];
+const navItems = [
+  { label: 'Overview', current: true },
+  { label: 'Messages' },
+  { label: 'Drafts' },
+  { label: 'Archive' },
+];
 
 export function App() {
   return (
-    <main className="app-shell" aria-label="Authenticated mailbox layout">
-      <aside className="sidebar" aria-label="Folders">
-        <div className="sidebar__brand">Mail</div>
-        <nav className="folder-list">
-          {folders.map((folder) => (
-            <button className="folder-list__item" type="button" key={folder}>
-              {folder}
-            </button>
-          ))}
-        </nav>
-      </aside>
-
-      <section className="content-area" aria-label="Mailbox content">
-        <header className="content-header">
-          <p className="eyebrow">Authenticated workspace</p>
-          <h1>Inbox</h1>
-        </header>
-        <div className="empty-state" aria-label="No message selected">
-          <p>Select a message to read.</p>
-        </div>
-      </section>
-    </main>
+    <AppFrame
+      eyebrow="Authenticated workspace"
+      sidebar={<SidebarNav items={navItems} />}
+      title="Overview"
+    >
+      <EmptyState description="The workspace is empty." title="No content selected" />
+    </AppFrame>
   );
 }
