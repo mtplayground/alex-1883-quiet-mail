@@ -1,0 +1,1 @@
+-- Baseline migration for sqlx-managed PostgreSQL schema changes.

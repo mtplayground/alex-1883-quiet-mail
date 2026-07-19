@@ -28,7 +28,15 @@ npm run build
 Run the backend on `0.0.0.0:8080`:
 
 ```bash
-PATH=/usr/local/cargo/bin:$PATH cargo run --workspace
+export DATABASE_URL=postgresql://user:password@host:5432/database
+PATH=/usr/local/cargo/bin:$PATH cargo run -p mailbox-backend
+```
+
+Run database migrations:
+
+```bash
+export DATABASE_URL=postgresql://user:password@host:5432/database
+PATH=/usr/local/cargo/bin:$PATH sqlx migrate run --source migrations
 ```
 
 ## Checks

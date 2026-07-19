@@ -1,11 +1,12 @@
 mod config;
+mod db;
 mod error;
 mod router;
 
 use tokio::net::TcpListener;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
-use crate::{config::Config, error::AppError, router::build_router};
+use crate::{config::Config, db::Database, error::AppError, router::build_router};
 
 #[tokio::main]
 async fn main() {
@@ -19,6 +20,9 @@ async fn run() -> Result<(), AppError> {
     init_tracing();
 
     let config = Config::from_env()?;
+    let database = Database::connect(&config).await?;
+    database.run_migrations().await?;
+
     let address = config.socket_addr()?;
     let listener = TcpListener::bind(address)
         .await
@@ -28,7 +32,7 @@ async fn run() -> Result<(), AppError> {
         })?;
 
     tracing::info!(%address, "listening");
-    axum::serve(listener, build_router(config))
+    axum::serve(listener, build_router(config, database))
         .with_graceful_shutdown(shutdown_signal())
         .await
         .map_err(|source| AppError::Config {
