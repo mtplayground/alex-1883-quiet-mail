@@ -17,7 +17,14 @@ import { ComposePanel } from './ComposePanel';
 import { FolderSidebar } from './FolderSidebar';
 import { MessageList } from './MessageList';
 import { ReadingPane } from './ReadingPane';
-import { fetchFolders, fetchMessage, fetchMessages, moveMessage } from './api';
+import {
+  createForwardDraft,
+  createReplyDraft,
+  fetchFolders,
+  fetchMessage,
+  fetchMessages,
+  moveMessage,
+} from './api';
 import type { Folder, Message, MessageListItem, MoveAction } from './types';
 
 type MailboxContextValue = {
@@ -35,12 +42,18 @@ type MailboxContextValue = {
   detailError: string | null;
   moveLoading: boolean;
   moveError: string | null;
+  replyForwardLoading: boolean;
+  replyForwardError: string | null;
   selectMessage: (messageId: number) => void;
   moveSelectedMessage: (action: MoveAction) => void;
   composeOpen: boolean;
+  composeDraft: Message | null;
+  composeSession: number;
   openCompose: () => void;
   closeCompose: () => void;
   handleComposedMessage: (message: Message) => void;
+  createReply: () => void;
+  createForward: () => void;
 };
 
 const MailboxContext = createContext<MailboxContextValue | undefined>(undefined);
@@ -58,7 +71,11 @@ export function MailboxProvider({ children }: { children: ReactNode }) {
   const [detailError, setDetailError] = useState<string | null>(null);
   const [moveLoading, setMoveLoading] = useState(false);
   const [moveError, setMoveError] = useState<string | null>(null);
+  const [replyForwardLoading, setReplyForwardLoading] = useState(false);
+  const [replyForwardError, setReplyForwardError] = useState<string | null>(null);
   const [composeOpen, setComposeOpen] = useState(false);
+  const [composeDraft, setComposeDraft] = useState<Message | null>(null);
+  const [composeSession, setComposeSession] = useState(0);
 
   useEffect(() => {
     let active = true;
@@ -127,6 +144,8 @@ export function MailboxProvider({ children }: { children: ReactNode }) {
     setDetailError(null);
     setMoveError(null);
     setMoveLoading(false);
+    setReplyForwardError(null);
+    setReplyForwardLoading(false);
     setSelectedFolder(folderKey);
   }, []);
 
@@ -135,6 +154,7 @@ export function MailboxProvider({ children }: { children: ReactNode }) {
     setDetailLoading(true);
     setDetailError(null);
     setMoveError(null);
+    setReplyForwardError(null);
 
     fetchMessage(messageId)
       .then((response) => {
@@ -189,6 +209,8 @@ export function MailboxProvider({ children }: { children: ReactNode }) {
   );
 
   const openCompose = useCallback(() => {
+    setComposeDraft(null);
+    setComposeSession((current) => current + 1);
     setComposeOpen(true);
   }, []);
 
@@ -198,14 +220,65 @@ export function MailboxProvider({ children }: { children: ReactNode }) {
 
   const handleComposedMessage = useCallback(
     (message: Message) => {
+      if (message.folder_key === 'drafts') {
+        setComposeDraft(message);
+      } else {
+        setComposeDraft((current) => (current?.id === message.id ? message : current));
+      }
+
       if (message.folder_key !== selectedFolder) {
         return;
       }
 
-      setMessages((current) => [toListItem(message), ...current]);
+      setMessages((current) => upsertListItem(current, message));
     },
     [selectedFolder],
   );
+
+  const createThreadedCompose = useCallback(
+    (kind: 'reply' | 'forward') => {
+      if (!selectedMessage) {
+        return;
+      }
+
+      setReplyForwardLoading(true);
+      setReplyForwardError(null);
+
+      const createDraft = kind === 'reply' ? createReplyDraft : createForwardDraft;
+
+      createDraft(selectedMessage.id)
+        .then((response) => {
+          const draft = response.message;
+
+          setComposeDraft(draft);
+          setComposeOpen(true);
+          setMessages((current) => {
+            if (selectedFolder !== draft.folder_key) {
+              return current;
+            }
+
+            return upsertListItem(current, draft);
+          });
+        })
+        .catch(() => {
+          setReplyForwardError(
+            kind === 'reply' ? 'Reply could not be prepared.' : 'Forward could not be prepared.',
+          );
+        })
+        .finally(() => {
+          setReplyForwardLoading(false);
+        });
+    },
+    [selectedFolder, selectedMessage],
+  );
+
+  const createReply = useCallback(() => {
+    createThreadedCompose('reply');
+  }, [createThreadedCompose]);
+
+  const createForward = useCallback(() => {
+    createThreadedCompose('forward');
+  }, [createThreadedCompose]);
 
   const selectedFolderName = useMemo(
     () => folders.find((folder) => folder.key === selectedFolder)?.display_name ?? 'Inbox',
@@ -228,16 +301,26 @@ export function MailboxProvider({ children }: { children: ReactNode }) {
       detailError,
       moveLoading,
       moveError,
+      replyForwardLoading,
+      replyForwardError,
       selectMessage,
       moveSelectedMessage,
       composeOpen,
+      composeDraft,
+      composeSession,
       openCompose,
       closeCompose,
       handleComposedMessage,
+      createReply,
+      createForward,
     }),
     [
       closeCompose,
+      composeDraft,
       composeOpen,
+      composeSession,
+      createForward,
+      createReply,
       detailError,
       detailLoading,
       folders,
@@ -250,6 +333,8 @@ export function MailboxProvider({ children }: { children: ReactNode }) {
       moveLoading,
       moveSelectedMessage,
       openCompose,
+      replyForwardError,
+      replyForwardLoading,
       selectFolder,
       selectMessage,
       selectedFolder,
@@ -293,7 +378,11 @@ export function MailboxSidebar() {
 export function MailboxContent() {
   const {
     closeCompose,
+    composeDraft,
     composeOpen,
+    composeSession,
+    createForward,
+    createReply,
     detailError,
     detailLoading,
     handleComposedMessage,
@@ -303,6 +392,8 @@ export function MailboxContent() {
     moveError,
     moveLoading,
     moveSelectedMessage,
+    replyForwardError,
+    replyForwardLoading,
     selectedMessage,
     selectedMessageId,
     selectMessage,
@@ -329,10 +420,16 @@ export function MailboxContent() {
             moveError={moveError}
             moveLoading={moveLoading}
             onMoveMessage={moveSelectedMessage}
+            onForward={createForward}
+            onReply={createReply}
+            replyForwardError={replyForwardError}
+            replyForwardLoading={replyForwardLoading}
           />
         </div>
       </section>
       <ComposePanel
+        draft={composeDraft}
+        key={composeDraft?.id ?? `new-${composeSession}`}
         onClose={closeCompose}
         onDraftSaved={handleComposedMessage}
         onSent={handleComposedMessage}
@@ -374,4 +471,15 @@ function toListItem(message: Message): MessageListItem {
     sent_at: message.sent_at,
     is_read: message.is_read,
   };
+}
+
+function upsertListItem(messages: MessageListItem[], message: Message) {
+  const listItem = toListItem(message);
+  const exists = messages.some((current) => current.id === message.id);
+
+  if (!exists) {
+    return [listItem, ...messages];
+  }
+
+  return messages.map((current) => (current.id === message.id ? listItem : current));
 }

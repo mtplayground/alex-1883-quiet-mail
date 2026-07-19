@@ -3,11 +3,12 @@ import { useMemo, useState, type ReactNode } from 'react';
 import { Button } from '../components/ui/Button';
 import { classNames } from '../lib/classNames';
 
-import { saveDraft, sendMessage } from './api';
+import { saveDraft, sendMessage, updateDraft } from './api';
 import type { ComposePayload, Message } from './types';
 
 type ComposePanelProps = {
   open: boolean;
+  draft: Message | null;
   onClose: () => void;
   onDraftSaved: (message: Message) => void;
   onSent: (message: Message) => void;
@@ -24,8 +25,8 @@ const emptyForm = {
 const fieldClassName =
   'min-h-10 w-full rounded-ui border border-line bg-surface px-3 text-sm text-ink outline-none transition-colors placeholder:text-ink-soft focus:border-accent disabled:cursor-wait disabled:opacity-60';
 
-export function ComposePanel({ open, onClose, onDraftSaved, onSent }: ComposePanelProps) {
-  const [form, setForm] = useState(emptyForm);
+export function ComposePanel({ draft, open, onClose, onDraftSaved, onSent }: ComposePanelProps) {
+  const [form, setForm] = useState(() => (draft ? formFromMessage(draft) : emptyForm));
   const [submitting, setSubmitting] = useState<'draft' | 'send' | null>(null);
   const [status, setStatus] = useState<string | null>(null);
   const payload = useMemo<ComposePayload>(
@@ -35,11 +36,15 @@ export function ComposePanel({ open, onClose, onDraftSaved, onSent }: ComposePan
       bcc: parseRecipients(form.bcc),
       subject: form.subject,
       body: form.body,
+      thread_root_id: draft?.thread_root_id ?? null,
+      reply_to_message_id: draft?.reply_to_message_id ?? null,
+      forwarded_from_message_id: draft?.forwarded_from_message_id ?? null,
     }),
-    [form],
+    [draft, form],
   );
   const canSend =
     payload.to.length > 0 && payload.subject.trim().length > 0 && payload.body.trim().length > 0;
+  const title = draft ? composeTitle(draft) : 'New message';
 
   if (!open) {
     return null;
@@ -50,7 +55,7 @@ export function ComposePanel({ open, onClose, onDraftSaved, onSent }: ComposePan
     setStatus(null);
 
     try {
-      const response = await saveDraft(payload);
+      const response = draft ? await updateDraft(draft.id, payload) : await saveDraft(payload);
       onDraftSaved(response.message);
       setStatus('Draft saved.');
     } catch {
@@ -93,7 +98,7 @@ export function ComposePanel({ open, onClose, onDraftSaved, onSent }: ComposePan
       className="fixed inset-x-3 bottom-3 z-20 rounded-ui border border-line bg-panel shadow-[0_18px_50px_rgb(31_41_51_/_0.16)] sm:left-auto sm:right-5 sm:w-[32rem]"
     >
       <div className="flex items-center justify-between border-b border-line px-4 py-3">
-        <h2 className="text-sm font-semibold text-ink">New message</h2>
+        <h2 className="text-sm font-semibold text-ink">{title}</h2>
         <Button
           aria-label="Close compose"
           className="min-h-8 w-auto px-2 text-xs"
@@ -191,4 +196,26 @@ function parseRecipients(value: string) {
     .split(/[;,]/)
     .map((recipient) => recipient.trim())
     .filter(Boolean);
+}
+
+function formFromMessage(message: Message) {
+  return {
+    to: message.to_recipients.join(', '),
+    cc: message.cc_recipients.join(', '),
+    bcc: message.bcc_recipients.join(', '),
+    subject: message.subject,
+    body: message.body,
+  };
+}
+
+function composeTitle(message: Message) {
+  if (message.reply_to_message_id !== null) {
+    return 'Reply';
+  }
+
+  if (message.forwarded_from_message_id !== null) {
+    return 'Forward';
+  }
+
+  return 'New message';
 }

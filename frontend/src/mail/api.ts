@@ -52,3 +52,25 @@ export function saveDraft(payload: ComposePayload) {
     body: JSON.stringify(payload),
   });
 }
+
+export function updateDraft(messageId: number, payload: ComposePayload) {
+  return requestJson<MessageResponse>(`/api/mailbox/drafts/${messageId}`, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(payload),
+  });
+}
+
+export function createReplyDraft(messageId: number) {
+  return requestJson<MessageResponse>(`/api/mailbox/messages/${messageId}/reply`, {
+    method: 'POST',
+  });
+}
+
+export function createForwardDraft(messageId: number) {
+  return requestJson<MessageResponse>(`/api/mailbox/messages/${messageId}/forward`, {
+    method: 'POST',
+  });
+}
