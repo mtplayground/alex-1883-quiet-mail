@@ -13,9 +13,10 @@ import { AppFrame } from '../components/layout/AppFrame';
 import { UserBadge } from '../components/ui/UserBadge';
 
 import { FolderSidebar } from './FolderSidebar';
-import { MessageList, MessagePreview } from './MessageList';
-import { fetchFolders, fetchMessage, fetchMessages } from './api';
-import type { Folder, Message, MessageListItem } from './types';
+import { MessageList } from './MessageList';
+import { ReadingPane } from './ReadingPane';
+import { fetchFolders, fetchMessage, fetchMessages, moveMessage } from './api';
+import type { Folder, Message, MessageListItem, MoveAction } from './types';
 
 type MailboxContextValue = {
   folders: Folder[];
@@ -30,7 +31,10 @@ type MailboxContextValue = {
   selectedMessage: Message | null;
   detailLoading: boolean;
   detailError: string | null;
+  moveLoading: boolean;
+  moveError: string | null;
   selectMessage: (messageId: number) => void;
+  moveSelectedMessage: (action: MoveAction) => void;
 };
 
 const MailboxContext = createContext<MailboxContextValue | undefined>(undefined);
@@ -46,6 +50,8 @@ export function MailboxProvider({ children }: { children: ReactNode }) {
   const [selectedMessage, setSelectedMessage] = useState<Message | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState<string | null>(null);
+  const [moveLoading, setMoveLoading] = useState(false);
+  const [moveError, setMoveError] = useState<string | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -112,6 +118,8 @@ export function MailboxProvider({ children }: { children: ReactNode }) {
     setSelectedMessageId(null);
     setSelectedMessage(null);
     setDetailError(null);
+    setMoveError(null);
+    setMoveLoading(false);
     setSelectedFolder(folderKey);
   }, []);
 
@@ -119,6 +127,7 @@ export function MailboxProvider({ children }: { children: ReactNode }) {
     setSelectedMessageId(messageId);
     setDetailLoading(true);
     setDetailError(null);
+    setMoveError(null);
 
     fetchMessage(messageId)
       .then((response) => {
@@ -137,6 +146,40 @@ export function MailboxProvider({ children }: { children: ReactNode }) {
         setDetailLoading(false);
       });
   }, []);
+
+  const moveSelectedMessage = useCallback(
+    (action: MoveAction) => {
+      if (!selectedMessage) {
+        return;
+      }
+
+      setMoveLoading(true);
+      setMoveError(null);
+
+      moveMessage(selectedMessage.id, action)
+        .then((response) => {
+          const movedMessage = response.message;
+
+          setSelectedMessage(movedMessage);
+          setMessages((current) => {
+            if (movedMessage.folder_key !== selectedFolder) {
+              return current.filter((message) => message.id !== movedMessage.id);
+            }
+
+            return current.map((message) =>
+              message.id === movedMessage.id ? toListItem(movedMessage) : message,
+            );
+          });
+        })
+        .catch(() => {
+          setMoveError('Message could not be moved.');
+        })
+        .finally(() => {
+          setMoveLoading(false);
+        });
+    },
+    [selectedFolder, selectedMessage],
+  );
 
   const selectedFolderName = useMemo(
     () => folders.find((folder) => folder.key === selectedFolder)?.display_name ?? 'Inbox',
@@ -157,7 +200,10 @@ export function MailboxProvider({ children }: { children: ReactNode }) {
       selectedMessage,
       detailLoading,
       detailError,
+      moveLoading,
+      moveError,
       selectMessage,
+      moveSelectedMessage,
     }),
     [
       detailError,
@@ -167,6 +213,9 @@ export function MailboxProvider({ children }: { children: ReactNode }) {
       messages,
       messagesError,
       messagesLoading,
+      moveError,
+      moveLoading,
+      moveSelectedMessage,
       selectFolder,
       selectMessage,
       selectedFolder,
@@ -214,6 +263,9 @@ export function MailboxContent() {
     messages,
     messagesError,
     messagesLoading,
+    moveError,
+    moveLoading,
+    moveSelectedMessage,
     selectedFolderName,
     selectedMessage,
     selectedMessageId,
@@ -235,7 +287,14 @@ export function MailboxContent() {
         />
       </div>
       <div className="min-w-0 bg-surface">
-        <MessagePreview error={detailError} loading={detailLoading} message={selectedMessage} />
+        <ReadingPane
+          error={detailError}
+          loading={detailLoading}
+          message={selectedMessage}
+          moveError={moveError}
+          moveLoading={moveLoading}
+          onMoveMessage={moveSelectedMessage}
+        />
       </div>
     </section>
   );
@@ -249,4 +308,15 @@ function useMailboxContext() {
   }
 
   return context;
+}
+
+function toListItem(message: Message): MessageListItem {
+  return {
+    id: message.id,
+    sender: message.sender,
+    subject: message.subject,
+    snippet: message.snippet,
+    sent_at: message.sent_at,
+    is_read: message.is_read,
+  };
 }

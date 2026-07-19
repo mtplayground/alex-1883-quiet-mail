@@ -38,3 +38,5 @@ export type MessagesResponse = {
 export type MessageResponse = {
   message: Message;
 };
+
+export type MoveAction = 'archive' | 'trash' | 'restore';
