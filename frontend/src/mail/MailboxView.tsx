@@ -13,6 +13,7 @@ import type { AuthUser } from '../auth/types';
 import { AppFrame } from '../components/layout/AppFrame';
 import { Button } from '../components/ui/Button';
 import { UserBadge } from '../components/ui/UserBadge';
+import { ThemeToggle } from '../theme/ThemeToggle';
 
 import { ComposePanel } from './ComposePanel';
 import { FolderSidebar } from './FolderSidebar';
@@ -459,7 +460,8 @@ export function MailboxFrame({ user }: { user: AuthUser }) {
             onClear={clearSearch}
             onSearch={runSearch}
           />
-          <div className="shrink-0">
+          <div className="flex shrink-0 items-center justify-end gap-3">
+            <ThemeToggle />
             <UserBadge user={user} />
           </div>
         </div>
