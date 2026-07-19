@@ -62,6 +62,9 @@ export type ComposePayload = {
   bcc: string[];
   subject: string;
   body: string;
+  thread_root_id?: number | null;
+  reply_to_message_id?: number | null;
+  forwarded_from_message_id?: number | null;
 };
 
 export type MoveAction = 'archive' | 'trash' | 'restore';

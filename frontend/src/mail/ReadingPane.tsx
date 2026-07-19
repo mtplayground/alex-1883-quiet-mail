@@ -10,6 +10,10 @@ type ReadingPaneProps = {
   moveLoading: boolean;
   moveError: string | null;
   onMoveMessage: (action: MoveAction) => void;
+  replyForwardLoading: boolean;
+  replyForwardError: string | null;
+  onReply: () => void;
+  onForward: () => void;
 };
 
 const detailDateFormatter = new Intl.DateTimeFormat(undefined, {
@@ -26,6 +30,10 @@ export function ReadingPane({
   moveLoading,
   moveError,
   onMoveMessage,
+  replyForwardLoading,
+  replyForwardError,
+  onReply,
+  onForward,
 }: ReadingPaneProps) {
   if (loading) {
     return <PaneStatus label="Opening message" />;
@@ -49,7 +57,19 @@ export function ReadingPane({
             {formatDate(message.sent_at)}
           </time>
         </div>
-        <MoveActions folderKey={message.folder_key} loading={moveLoading} onMove={onMoveMessage} />
+        <div className="flex flex-wrap gap-2">
+          <ThreadActions
+            folderKey={message.folder_key}
+            loading={replyForwardLoading}
+            onForward={onForward}
+            onReply={onReply}
+          />
+          <MoveActions
+            folderKey={message.folder_key}
+            loading={moveLoading}
+            onMove={onMoveMessage}
+          />
+        </div>
       </div>
 
       <dl className="grid gap-3 border-b border-line py-5 text-sm sm:grid-cols-[5rem_minmax(0,1fr)]">
@@ -64,10 +84,53 @@ export function ReadingPane({
         <MetadataRow label="Folder" value={folderLabel(message.folder_key)} />
       </dl>
 
-      {moveError ? <p className="pt-5 text-sm text-ink-muted">{moveError}</p> : null}
+      {moveError || replyForwardError ? (
+        <p className="pt-5 text-sm text-ink-muted">{moveError ?? replyForwardError}</p>
+      ) : null}
 
       <p className="whitespace-pre-wrap py-6 text-sm leading-7 text-ink">{message.body}</p>
     </article>
+  );
+}
+
+function ThreadActions({
+  folderKey,
+  loading,
+  onForward,
+  onReply,
+}: {
+  folderKey: string;
+  loading: boolean;
+  onForward: () => void;
+  onReply: () => void;
+}) {
+  if (folderKey === 'drafts') {
+    return null;
+  }
+
+  return (
+    <>
+      <Button
+        className={classNames(
+          'min-h-9 w-auto border border-line bg-panel px-3 text-xs',
+          loading ? 'cursor-wait opacity-60' : '',
+        )}
+        disabled={loading}
+        onClick={onReply}
+      >
+        {loading ? 'Preparing' : 'Reply'}
+      </Button>
+      <Button
+        className={classNames(
+          'min-h-9 w-auto border border-line bg-panel px-3 text-xs',
+          loading ? 'cursor-wait opacity-60' : '',
+        )}
+        disabled={loading}
+        onClick={onForward}
+      >
+        Forward
+      </Button>
+    </>
   );
 }
 
