@@ -17,6 +17,7 @@ pub struct Config {
     pub email: Option<EmailConfig>,
     pub bootstrap_account: Option<BootstrapAccountConfig>,
     pub legacy_jwt_secret: Option<String>,
+    pub e2e_test_auth: Option<E2eTestAuthConfig>,
 }
 
 #[derive(Clone)]
@@ -36,6 +37,12 @@ pub struct EmailConfig {
 pub struct BootstrapAccountConfig {
     pub email: String,
     pub password: String,
+}
+
+#[derive(Clone)]
+pub struct E2eTestAuthConfig {
+    pub email: String,
+    pub name: String,
 }
 
 impl Config {
@@ -73,6 +80,7 @@ impl Config {
         let bootstrap_account = optional_pair("SINGLE_ACCOUNT_EMAIL", "SINGLE_ACCOUNT_PASSWORD")?
             .map(|(email, password)| BootstrapAccountConfig { email, password });
         let legacy_jwt_secret = optional_env("JWT_SECRET")?;
+        let e2e_test_auth = e2e_test_auth_config()?;
 
         Ok(Self {
             host,
@@ -85,6 +93,7 @@ impl Config {
             email,
             bootstrap_account,
             legacy_jwt_secret,
+            e2e_test_auth,
         })
     }
 
@@ -118,9 +127,26 @@ impl Config {
                 .legacy_jwt_secret
                 .as_ref()
                 .is_some_and(|value| !value.is_empty()),
+            e2e_test_auth_enabled = self.e2e_test_auth.is_some(),
             "configuration loaded"
         );
     }
+}
+
+fn e2e_test_auth_config() -> Result<Option<E2eTestAuthConfig>, AppError> {
+    let enabled = optional_env("E2E_TEST_AUTH")?
+        .as_deref()
+        .is_some_and(|value| matches!(value, "1" | "true" | "TRUE" | "yes" | "YES"));
+
+    if !enabled {
+        return Ok(None);
+    }
+
+    let email =
+        optional_env("E2E_TEST_AUTH_EMAIL")?.unwrap_or_else(|| "e2e@example.com".to_owned());
+    let name = optional_env("E2E_TEST_AUTH_NAME")?.unwrap_or_else(|| "E2E Tester".to_owned());
+
+    Ok(Some(E2eTestAuthConfig { email, name }))
 }
 
 fn required_env(key: &'static str) -> Result<String, AppError> {
