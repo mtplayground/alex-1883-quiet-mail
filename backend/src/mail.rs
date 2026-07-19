@@ -1,7 +1,14 @@
 #![allow(dead_code)]
 
+use axum::{
+    extract::{Path, State},
+    routing::get,
+    Json, Router,
+};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+
+use crate::{app_state::AppState, db::Database, error::AppError};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
@@ -81,4 +88,90 @@ pub struct Message {
     pub forwarded_from_message_id: Option<i64>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, sqlx::FromRow)]
+pub struct FolderSummary {
+    pub key: String,
+    pub display_name: String,
+    pub sort_order: i16,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, sqlx::FromRow)]
+pub struct MessageListItem {
+    pub id: i64,
+    pub sender: String,
+    pub subject: String,
+    pub snippet: String,
+    pub sent_at: DateTime<Utc>,
+    pub is_read: bool,
+}
+
+#[derive(Debug, Serialize)]
+pub struct FoldersResponse {
+    pub folders: Vec<FolderSummary>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct MessagesResponse {
+    pub folder_key: String,
+    pub messages: Vec<MessageListItem>,
+}
+
+pub fn routes() -> Router<AppState> {
+    Router::new()
+        .route("/folders", get(list_folders))
+        .route("/folders/:folder_key/messages", get(list_messages))
+}
+
+async fn list_folders(State(state): State<AppState>) -> Result<Json<FoldersResponse>, AppError> {
+    let folders = fetch_folders(&state.database).await?;
+
+    Ok(Json(FoldersResponse { folders }))
+}
+
+async fn list_messages(
+    State(state): State<AppState>,
+    Path(folder_key): Path<String>,
+) -> Result<Json<MessagesResponse>, AppError> {
+    let folder = SystemFolder::from_key(&folder_key).ok_or_else(|| AppError::NotFound {
+        message: "folder not found".to_owned(),
+    })?;
+    let messages = fetch_messages_for_folder(&state.database, folder).await?;
+
+    Ok(Json(MessagesResponse {
+        folder_key: folder.key().to_owned(),
+        messages,
+    }))
+}
+
+pub async fn fetch_folders(database: &Database) -> Result<Vec<FolderSummary>, AppError> {
+    sqlx::query_as::<_, FolderSummary>(
+        r#"
+        SELECT key, display_name, sort_order
+        FROM folders
+        ORDER BY sort_order ASC
+        "#,
+    )
+    .fetch_all(database.pool())
+    .await
+    .map_err(|source| AppError::Database { source })
+}
+
+pub async fn fetch_messages_for_folder(
+    database: &Database,
+    folder: SystemFolder,
+) -> Result<Vec<MessageListItem>, AppError> {
+    sqlx::query_as::<_, MessageListItem>(
+        r#"
+        SELECT id, sender, subject, snippet, sent_at, is_read
+        FROM messages
+        WHERE folder_key = $1
+        ORDER BY sent_at DESC, id DESC
+        "#,
+    )
+    .bind(folder.key())
+    .fetch_all(database.pool())
+    .await
+    .map_err(|source| AppError::Database { source })
 }
