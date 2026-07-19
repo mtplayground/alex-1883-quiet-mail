@@ -1,5 +1,6 @@
 import { useMemo, useState, type ReactNode } from 'react';
 
+import { messageFromError } from '../api/client';
 import { Button } from '../components/ui/Button';
 import { classNames } from '../lib/classNames';
 
@@ -58,8 +59,8 @@ export function ComposePanel({ draft, open, onClose, onDraftSaved, onSent }: Com
       const response = draft ? await updateDraft(draft.id, payload) : await saveDraft(payload);
       onDraftSaved(response.message);
       setStatus('Draft saved.');
-    } catch {
-      setStatus('Draft could not be saved.');
+    } catch (error) {
+      setStatus(messageFromError(error, 'Draft could not be saved. Please try again shortly.'));
     } finally {
       setSubmitting(null);
     }
@@ -80,8 +81,8 @@ export function ComposePanel({ draft, open, onClose, onDraftSaved, onSent }: Com
       setForm(emptyForm);
       setStatus(null);
       onClose();
-    } catch {
-      setStatus('Message could not be sent.');
+    } catch (error) {
+      setStatus(messageFromError(error, 'Message could not be sent. Please try again shortly.'));
     } finally {
       setSubmitting(null);
     }
@@ -157,7 +158,7 @@ export function ComposePanel({ draft, open, onClose, onDraftSaved, onSent }: Com
       </div>
 
       <div className="flex flex-col gap-3 border-t border-line px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-        <p className="min-h-5 text-sm text-ink-muted" role="status">
+        <p className="min-h-5 text-sm text-ink-muted" role="status" aria-live="polite">
           {status}
         </p>
         <div className="flex gap-2">

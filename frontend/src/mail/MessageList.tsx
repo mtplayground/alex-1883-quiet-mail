@@ -1,10 +1,13 @@
+import { EmptyState } from '../components/ui/EmptyState';
 import { classNames } from '../lib/classNames';
 
 import type { MessageListItem } from './types';
 
 type MessageListProps = {
   ariaLabel?: string;
-  emptyLabel?: string;
+  emptyDescription?: string;
+  emptyTitle?: string;
+  errorTitle?: string;
   loadingLabel?: string;
   messages: MessageListItem[];
   selectedMessageId: number | null;
@@ -20,7 +23,9 @@ const listDateFormatter = new Intl.DateTimeFormat(undefined, {
 
 export function MessageList({
   ariaLabel = 'Messages',
-  emptyLabel = 'No messages in this folder',
+  emptyDescription = 'This folder has no messages right now.',
+  emptyTitle = 'Nothing here',
+  errorTitle = 'Messages unavailable',
   loadingLabel = 'Loading messages',
   messages,
   selectedMessageId,
@@ -33,11 +38,11 @@ export function MessageList({
   }
 
   if (error) {
-    return <ListStatus label={error} />;
+    return <EmptyState title={errorTitle} description={error} />;
   }
 
   if (messages.length === 0) {
-    return <ListStatus label={emptyLabel} />;
+    return <EmptyState title={emptyTitle} description={emptyDescription} />;
   }
 
   return (
