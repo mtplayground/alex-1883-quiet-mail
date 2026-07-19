@@ -1,7 +1,7 @@
 #![allow(dead_code)]
 
 use axum::{
-    extract::{Path, State},
+    extract::{Path, Query, State},
     routing::{get, post, put},
     Extension, Json, Router,
 };
@@ -143,6 +143,12 @@ pub struct MessagesResponse {
 }
 
 #[derive(Debug, Serialize)]
+pub struct SearchMessagesResponse {
+    pub query: String,
+    pub messages: Vec<MessageListItem>,
+}
+
+#[derive(Debug, Serialize)]
 pub struct MessageResponse {
     pub message: Message,
 }
@@ -187,10 +193,16 @@ pub struct MoveMessageRequest {
     pub action: MoveAction,
 }
 
+#[derive(Debug, Deserialize)]
+pub struct SearchMessagesQuery {
+    pub q: String,
+}
+
 pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/folders", get(list_folders))
         .route("/folders/:folder_key/messages", get(list_messages))
+        .route("/search", get(search_messages))
         .route("/compose/send", post(send_message))
         .route("/drafts", get(list_drafts).post(save_draft))
         .route("/drafts/:message_id", put(update_draft))
@@ -217,6 +229,19 @@ async fn list_messages(
 
     Ok(Json(MessagesResponse {
         folder_key: folder.key().to_owned(),
+        messages,
+    }))
+}
+
+async fn search_messages(
+    State(state): State<AppState>,
+    Query(query): Query<SearchMessagesQuery>,
+) -> Result<Json<SearchMessagesResponse>, AppError> {
+    let search = query.normalized()?;
+    let messages = search_messages_by_query(&state.database, &search).await?;
+
+    Ok(Json(SearchMessagesResponse {
+        query: search,
         messages,
     }))
 }
@@ -381,6 +406,26 @@ impl SaveDraftRequest {
     }
 }
 
+impl SearchMessagesQuery {
+    fn normalized(self) -> Result<String, AppError> {
+        let query = self.q.trim();
+
+        if query.is_empty() {
+            return Err(AppError::BadRequest {
+                message: "search query is required".to_owned(),
+            });
+        }
+
+        if query.chars().count() > 200 {
+            return Err(AppError::BadRequest {
+                message: "search query must be 200 characters or fewer".to_owned(),
+            });
+        }
+
+        Ok(query.to_owned())
+    }
+}
+
 #[derive(Debug, Clone, Copy)]
 enum ThreadedDraftKind {
     Reply,
@@ -460,6 +505,24 @@ fn normalize_recipients<'a>(recipients: impl IntoIterator<Item = &'a String>) ->
 pub fn snippet_from_body(body: &str) -> String {
     let normalized = body.split_whitespace().collect::<Vec<_>>().join(" ");
     normalized.chars().take(160).collect()
+}
+
+fn escaped_like_pattern(value: &str) -> String {
+    let mut pattern = String::with_capacity(value.len() + 2);
+    pattern.push('%');
+
+    for character in value.to_lowercase().chars() {
+        match character {
+            '%' | '_' | '\\' => {
+                pattern.push('\\');
+                pattern.push(character);
+            }
+            _ => pattern.push(character),
+        }
+    }
+
+    pattern.push('%');
+    pattern
 }
 
 async fn create_threaded_draft(
@@ -854,6 +917,50 @@ pub async fn fetch_messages_for_folder(
         "#,
     )
     .bind(folder.key())
+    .fetch_all(database.pool())
+    .await
+    .map_err(|source| AppError::Database { source })
+}
+
+pub async fn search_messages_by_query(
+    database: &Database,
+    query: &str,
+) -> Result<Vec<MessageListItem>, AppError> {
+    let like_pattern = escaped_like_pattern(query);
+
+    sqlx::query_as::<_, MessageListItem>(
+        r#"
+        WITH search AS (
+            SELECT
+                websearch_to_tsquery('simple', $1) AS query,
+                $2::TEXT AS pattern
+        )
+        SELECT id, sender, subject, snippet, sent_at, is_read
+        FROM messages, search
+        WHERE
+            to_tsvector('simple', subject || ' ' || sender || ' ' || body) @@ search.query
+            OR lower(subject) LIKE search.pattern ESCAPE '\'
+            OR lower(sender) LIKE search.pattern ESCAPE '\'
+            OR lower(body) LIKE search.pattern ESCAPE '\'
+        ORDER BY
+            (
+                ts_rank_cd(
+                    setweight(to_tsvector('simple', subject), 'A') ||
+                    setweight(to_tsvector('simple', sender), 'B') ||
+                    setweight(to_tsvector('simple', body), 'C'),
+                    search.query
+                )
+                + CASE WHEN lower(subject) LIKE search.pattern ESCAPE '\' THEN 0.30 ELSE 0 END
+                + CASE WHEN lower(sender) LIKE search.pattern ESCAPE '\' THEN 0.20 ELSE 0 END
+                + CASE WHEN lower(body) LIKE search.pattern ESCAPE '\' THEN 0.10 ELSE 0 END
+            ) DESC,
+            sent_at DESC,
+            id DESC
+        LIMIT 50
+        "#,
+    )
+    .bind(query)
+    .bind(like_pattern)
     .fetch_all(database.pool())
     .await
     .map_err(|source| AppError::Database { source })
