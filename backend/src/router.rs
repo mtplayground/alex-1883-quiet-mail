@@ -2,7 +2,7 @@ use axum::{extract::State, routing::get, Json, Router};
 use serde::Serialize;
 use tower_http::{services::ServeDir, trace::TraceLayer};
 
-use crate::{config::Config, db::Database, error::AppError};
+use crate::{app_state::AppState, auth, config::Config, db::Database, error::AppError};
 
 #[derive(Debug, Serialize)]
 struct HealthResponse {
@@ -16,9 +16,12 @@ struct DbReadyResponse {
 }
 
 pub fn build_router(config: Config, database: Database) -> Router {
+    let app_state = AppState::new(&config, database);
     let api = Router::new()
         .route("/health", get(health))
-        .route("/health/db", get(db_ready));
+        .route("/health/db", get(db_ready))
+        .route("/auth/login", get(auth::login))
+        .route("/auth/session", get(auth::session));
 
     Router::new()
         .nest("/api", api)
@@ -26,15 +29,15 @@ pub fn build_router(config: Config, database: Database) -> Router {
             ServeDir::new(config.frontend_dist).append_index_html_on_directories(true),
         )
         .layer(TraceLayer::new_for_http())
-        .with_state(database)
+        .with_state(app_state)
 }
 
 async fn health() -> Json<HealthResponse> {
     Json(HealthResponse { status: "ok" })
 }
 
-async fn db_ready(State(database): State<Database>) -> Result<Json<DbReadyResponse>, AppError> {
-    database.check_ready().await?;
+async fn db_ready(State(state): State<AppState>) -> Result<Json<DbReadyResponse>, AppError> {
+    state.database.check_ready().await?;
 
     Ok(Json(DbReadyResponse {
         status: "ok",

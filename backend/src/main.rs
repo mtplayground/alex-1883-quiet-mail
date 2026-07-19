@@ -1,4 +1,6 @@
 mod account;
+mod app_state;
+mod auth;
 mod config;
 mod db;
 mod error;
