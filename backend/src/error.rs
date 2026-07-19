@@ -22,6 +22,8 @@ pub enum AppError {
         #[source]
         source: sqlx::migrate::MigrateError,
     },
+    #[error("password hashing failed")]
+    PasswordHash { detail: String },
 }
 
 #[derive(Debug, Serialize)]
@@ -34,9 +36,9 @@ impl IntoResponse for AppError {
     fn into_response(self) -> Response {
         let status = match &self {
             AppError::Config { .. } => StatusCode::INTERNAL_SERVER_ERROR,
-            AppError::Database { .. } | AppError::Migration { .. } => {
-                StatusCode::SERVICE_UNAVAILABLE
-            }
+            AppError::Database { .. }
+            | AppError::Migration { .. }
+            | AppError::PasswordHash { .. } => StatusCode::SERVICE_UNAVAILABLE,
         };
         let message = match &self {
             AppError::Config { message, detail } => detail
@@ -44,6 +46,9 @@ impl IntoResponse for AppError {
                 .map_or_else(|| message.clone(), |detail| format!("{message}: {detail}")),
             AppError::Database { .. } => "database is not ready".to_owned(),
             AppError::Migration { .. } => "database migrations did not complete".to_owned(),
+            AppError::PasswordHash { detail } => {
+                format!("account bootstrap did not complete: {detail}")
+            }
         };
 
         (

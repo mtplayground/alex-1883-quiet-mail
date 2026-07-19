@@ -34,4 +34,8 @@ impl Database {
             .map(|_| ())
             .map_err(|source| AppError::Database { source })
     }
+
+    pub fn pool(&self) -> &PgPool {
+        &self.pool
+    }
 }
